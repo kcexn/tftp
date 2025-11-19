@@ -1,0 +1,21 @@
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-assignment-in-if-condition,
+  cert-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -readability-braces-around-statements,
+  -readability-magic-numbers,
+  -readability-implicit-bool-conversion,
+  -readability-avoid-return-with-void-value,
+  -readability-static-accessed-through-instance
+HeaderFilterRegex: '^include/.*'
+CheckOptions:
+  misc-trailing-whitespace.AllowEmptyLines: false
+
