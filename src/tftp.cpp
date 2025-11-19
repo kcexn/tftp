@@ -267,5 +267,6 @@ auto handle_data(const messages::data *data, std::size_t len,
 
   return 0;
 }
+
 #endif // TFTP_SERVER_STATIC_TEST
 } // namespace tftp

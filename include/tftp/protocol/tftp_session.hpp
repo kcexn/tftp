@@ -30,7 +30,7 @@
 namespace tftp {
 
 /** @brief A TFTP session holds all of the session state. */
-struct session {
+struct session_t {
   /** @brief The session clock. */
   using clock = std::chrono::steady_clock;
   /** @brief The session timestamp. */

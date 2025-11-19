@@ -2,17 +2,13 @@ include(GoogleTest)
 
 set(TEST_NAMES
   test_argument_parser
+  test_dns
   test_endian
   test_filesystem
   test_generator
   test_tftp
   test_tftp_protocol
-  test_tftp_server_static
-  test_tftp_server
-  test_data_validation
-  test_ack_validation
-  test_out_of_blue_rrq
-  test_out_of_blue_wrq
+  test_tftp_client
 )
 
 foreach(TEST_NAME IN LISTS TEST_NAMES)
@@ -32,6 +28,10 @@ foreach(TEST_NAME IN LISTS TEST_NAMES)
     tftplib
     GTest::gtest_main
   )
+
+  if(${TEST_NAME} STREQUAL "test_tftp_client")
+    target_link_options(${TEST_NAME} PRIVATE -Wl,--wrap=getaddrinfo -Wl,--wrap=freeaddrinfo)
+  endif()
 
   if(TFTP_ENABLE_COVERAGE)
     target_link_libraries(${TEST_NAME} PRIVATE gcov)

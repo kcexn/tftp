@@ -78,7 +78,7 @@ protected:
   // Helper to create a session
   auto create_session() -> iterator_t
   {
-    return sessions.emplace(test_addr, session{});
+    return sessions.emplace(test_addr, session_t{});
   }
 };
 
