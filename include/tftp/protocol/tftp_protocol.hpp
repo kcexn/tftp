@@ -44,6 +44,8 @@ struct messages {
    * These are the supported TFTP transfer modes as defined in RFC 1350.
    */
   enum mode_t : std::uint8_t { NETASCII = 1, OCTET, MAIL };
+  /** @brief converts a mode enum to an integer. */
+  static constexpr auto mode_to_str(std::uint8_t mode) -> const char *;
 
   /**
    * @brief Protocol defined error codes.
@@ -318,4 +320,6 @@ struct errors {
 };
 
 } // namespace tftp
-#endif // TFTP_PROTOCOL_HPP
+
+#include "impl/tftp_protocol_impl.hpp" // IWYU pragma: export
+#endif                                 // TFTP_PROTOCOL_HPP

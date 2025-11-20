@@ -18,6 +18,7 @@
  * @brief This file declares TFTP application logic.
  */
 #pragma once
+#include <io/execution/poll_multiplexer.hpp>
 #ifndef TFTP_HPP
 #define TFTP_HPP
 #include "protocol/tftp_protocol.hpp"
@@ -41,7 +42,7 @@ using iterator_t = sessions_t::iterator;
  * @param siter An iterator pointing to the session.
  * @returns 0 if successful, a non-zero TFTP error otherwise.
  */
-auto handle_request(messages::request req, iterator_t siter) -> std::uint16_t;
+auto handle_request(messages::request req, session_t *siter) -> std::uint16_t;
 
 /**
  * @brief Processes an ack message.
@@ -49,7 +50,7 @@ auto handle_request(messages::request req, iterator_t siter) -> std::uint16_t;
  * @param siter An iterator pointing to the session.
  * @returns 0 if successful, a non-zero TFTP error otherwise.
  */
-auto handle_ack(messages::ack ack, iterator_t siter) -> std::uint16_t;
+auto handle_ack(messages::ack ack, session_t *siter) -> std::uint16_t;
 
 /**
  * @brief Processes a data message.
@@ -59,7 +60,7 @@ auto handle_ack(messages::ack ack, iterator_t siter) -> std::uint16_t;
  * @returns 0 if successful, a non-zero TFTP error otherwise.
  */
 auto handle_data(const messages::data *data, std::size_t len,
-                 iterator_t siter) -> std::uint16_t;
+                 session_t *siter) -> std::uint16_t;
 
 /** @brief TFTP client namespace. */
 namespace client {
@@ -67,16 +68,27 @@ namespace client {
 using async_context = net::service::async_context;
 /** @brief socket address type. */
 template <typename T> using socket_address = io::socket::socket_address<T>;
+/** @brief The asynchronous client socket. */
+using socket_dialog = async_context::socket_dialog;
+/** @brief The socket message type. */
+using socket_message = io::socket::socket_message<sockaddr_in6>;
 
-/** @brief The sender for an asynchronous connect. */
-struct connect_t {
+/** @brief common elements for all tftp client senders. */
+struct sender_t {
   /** @brief sender concept. */
   using sender_concept = stdexec::sender_t;
+  /** @brief completion signature set value types. */
+  using set_value_t = stdexec::set_value_t;
+  /** @brief set error types. */
+  using set_error_t = stdexec::set_error_t;
+};
+
+/** @brief The sender for an asynchronous connect. */
+struct connect_t : sender_t {
   /** @brief Sender completion signature. */
   using completion_signatures =
-      stdexec::completion_signatures<stdexec::set_value_t(
-                                         socket_address<sockaddr_in6>),
-                                     stdexec::set_error_t(std::error_code)>;
+      stdexec::completion_signatures<set_value_t(socket_address<sockaddr_in6>),
+                                     set_error_t(std::error_code)>;
 
   /** @brief sender operation state. */
   template <typename Receiver> struct state_t {
@@ -109,6 +121,139 @@ struct connect_t {
   /** @brief The asynchronous context. */
   async_context *ctx = nullptr;
 };
+
+/** @brief The sender for an asynchronous put. */
+struct put_file_t : sender_t {
+  /**
+   * @brief tftp status response.
+   * @details tftp status is an error code followed by an error message,
+   * an error code of 0 AND an empty string indicates an OK response.
+   */
+  using status_t = std::pair<std::uint16_t, std::string>;
+  /** @brief Sender completion signature. */
+  using completion_signatures =
+      stdexec::completion_signatures<set_value_t(status_t),
+                                     set_error_t(std::error_code)>;
+
+  /** @brief sender operation state. */
+  template <typename Receiver> struct state_t {
+    /** @brief Initiate the asynchronous put. */
+    auto start() noexcept -> void;
+
+    /** @brief Send a WRQ. */
+    auto send_wrq() noexcept -> void;
+
+    /** @brief Submit an asynchronous sendmsg to the context. */
+    auto submit_sendmsg() noexcept -> void;
+
+    /** @brief Submit async recvmsg to the context. */
+    auto submit_recvmsg() noexcept -> void;
+
+    /** @brief Cleanup the client session. */
+    auto cleanup() noexcept -> void;
+
+    /** @brief The tftp client session details */
+    session_t session;
+    /** @brief The socket message type. */
+    socket_message sockmsg;
+    /** @brief The receive buffer. */
+    std::vector<char> recv_buffer;
+    /** @brief The client socket. */
+    socket_dialog socket;
+    /** @brief The operation receiver. */
+    Receiver receiver;
+    /** @brief The asynchronous context. */
+    async_context *ctx = nullptr;
+  };
+
+  /**
+   * @brief Connect this sender to a receiver.
+   * @tparam Receiver receiver type.
+   * @param receiver The receiver to connnect to.
+   * @returns An operation state for receiver.
+   */
+  template <typename Receiver>
+  auto connect(Receiver &&receiver) -> state_t<Receiver>;
+
+  /** @brief address of the tftp server. */
+  socket_address<sockaddr_in6> server_addr;
+  /** @brief local file path to send. */
+  std::filesystem::path local;
+  /** @brief remote file path to write to. */
+  std::filesystem::path remote;
+  /** @brief The asynchronous context. */
+  async_context *ctx = nullptr;
+  /** @brief The tftp transmission mode. */
+  std::uint8_t mode = 0;
+};
+
+/** @brief The sender for an asynchronous get. */
+struct get_file_t : sender_t {
+  /**
+   * @brief tftp status response.
+   * @details tftp status is an error code followed by an error message,
+   * an error code of 0 AND an empty string indicates an OK response.
+   */
+  using status_t = std::pair<std::uint16_t, std::string>;
+  /** @brief Sender completion signature. */
+  using completion_signatures =
+      stdexec::completion_signatures<set_value_t(status_t)>;
+
+  /** @brief sender operation state. */
+  template <typename Receiver> struct state_t {
+    /** @brief Initiate the asynchronous get. */
+    auto start() noexcept -> void;
+
+    /** @brief Send a RRQ. */
+    auto send_rrq() noexcept -> void;
+
+    /** @brief Send an ACK. */
+    auto send_ack() noexcept -> void;
+
+    /** @brief Submit async recvmsg to the context. */
+    auto submit_recvmsg() noexcept -> void;
+
+    /** @brief address of the tftp server. */
+    socket_address<sockaddr_in6> server_addr;
+    /** @brief local file path to send. */
+    std::filesystem::path local;
+    /** @brief remote file path to write to. */
+    std::filesystem::path remote;
+    /** @brief The send buffer. */
+    std::vector<std::byte> send_buffer;
+    /** @brief The receive buffer. */
+    std::vector<char> recv_buffer;
+    /** @brief The client socket. */
+    socket_dialog socket;
+    /** @brief The operation receiver. */
+    Receiver receiver;
+    /** @brief The asynchronous context. */
+    async_context *ctx = nullptr;
+    /** @brief The tftp block number. */
+    std::uint16_t block_num = 0;
+    /** @brief The sending mode. */
+    std::uint16_t mode = 0;
+  };
+
+  /**
+   * @brief Connect this sender to a receiver.
+   * @tparam Receiver receiver type.
+   * @param receiver The receiver to connnect to.
+   * @returns An operation state for receiver.
+   */
+  template <typename Receiver>
+  auto connect(Receiver &&receiver) noexcept -> state_t<Receiver>;
+
+  /** @brief address of the tftp server. */
+  socket_address<sockaddr_in6> server_addr;
+  /** @brief local file path to send. */
+  std::filesystem::path local;
+  /** @brief remote file path to retrieve. */
+  std::filesystem::path remote;
+  /** @brief The asynchronous context. */
+  async_context *ctx = nullptr;
+};
+
 } // namespace client.
 } // namespace tftp
 

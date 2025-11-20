@@ -29,8 +29,6 @@ TEST(TftpClientTest, MakeClient)
 
   ASSERT_NE(client.ctx, nullptr);
   EXPECT_EQ(client.ctx, &ctx);
-  EXPECT_FALSE(client.rctx.buffer.empty());
-  EXPECT_EQ(client.rctx.buffer.size(), tftp::messages::DATAMSG_MAXLEN);
 }
 
 TEST(TftpClientTest, Connect)

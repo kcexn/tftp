@@ -99,7 +99,7 @@ TEST_F(TestTftp, HandleRequest_RejectsDataOpcode)
   auto siter = create_session();
   request req{.opc = DATA, .mode = OCTET, .filename = "test.txt"};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, ILLEGAL_OPERATION);
 }
@@ -109,7 +109,7 @@ TEST_F(TestTftp, HandleRequest_RejectsAckOpcode)
   auto siter = create_session();
   request req{.opc = ACK, .mode = OCTET, .filename = "test.txt"};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, ILLEGAL_OPERATION);
 }
@@ -119,7 +119,7 @@ TEST_F(TestTftp, HandleRequest_RejectsZeroMode)
   auto siter = create_session();
   request req{.opc = RRQ, .mode = 0, .filename = "test.txt"};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, ILLEGAL_OPERATION);
 }
@@ -129,7 +129,7 @@ TEST_F(TestTftp, HandleRequest_RejectsRrqWithMailMode)
   auto siter = create_session();
   request req{.opc = RRQ, .mode = MAIL, .filename = "test.txt"};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, ILLEGAL_OPERATION);
 }
@@ -142,7 +142,7 @@ TEST_F(TestTftp, HandleRequest_RrqWithNonexistentFile)
 
   request req{.opc = RRQ, .mode = OCTET, .filename = nonexistent.c_str()};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, FILE_NOT_FOUND);
 }
@@ -154,7 +154,7 @@ TEST_F(TestTftp, HandleRequest_RrqSuccessWithOctetMode)
 
   request req{.opc = RRQ, .mode = OCTET, .filename = test_file.c_str()};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.opc, RRQ);
@@ -175,7 +175,7 @@ TEST_F(TestTftp, HandleRequest_RrqSuccessWithNetasciiMode)
 
   request req{.opc = RRQ, .mode = NETASCII, .filename = test_file.c_str()};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.opc, RRQ);
@@ -193,7 +193,7 @@ TEST_F(TestTftp, HandleRequest_WrqSuccessWithOctetMode)
 
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.opc, WRQ);
@@ -213,7 +213,7 @@ TEST_F(TestTftp, HandleRequest_WrqWithMailMode)
 
   request req{.opc = WRQ, .mode = MAIL, .filename = username};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   // Result depends on whether the mail directory exists and user directory can
   // be created
@@ -238,7 +238,7 @@ TEST_F(TestTftp, HandleRequest_WrqSuccessWithNetasciiMode)
 
   request req{.opc = WRQ, .mode = NETASCII, .filename = target_file.c_str()};
 
-  const auto result = handle_request(req, siter);
+  const auto result = handle_request(req, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.mode, NETASCII);
@@ -249,19 +249,6 @@ TEST_F(TestTftp, HandleRequest_WrqSuccessWithNetasciiMode)
 // =============================================================================
 // handle_ack Tests
 // =============================================================================
-
-TEST_F(TestTftp, HandleAck_ReturnsErrorWhenNotRrq)
-{
-  auto siter = create_session();
-  siter->second.state.opc = WRQ;
-
-  ack ack_msg{.opc = htons(ACK), .block_num = htons(1)};
-
-  const auto result = handle_ack(ack_msg, siter);
-
-  EXPECT_EQ(result, UNKNOWN_TID);
-}
-
 TEST_F(TestTftp, HandleAck_SendsNextBlockWhenBufferFull)
 {
   const auto test_file = create_test_file(std::string(1024, 'X'));
@@ -269,7 +256,7 @@ TEST_F(TestTftp, HandleAck_SendsNextBlockWhenBufferFull)
 
   // Initialize RRQ session
   request req{.opc = RRQ, .mode = OCTET, .filename = test_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Buffer should be full after first request
   ASSERT_GE(siter->second.state.buffer.size(), DATAMSG_MAXLEN);
@@ -277,7 +264,7 @@ TEST_F(TestTftp, HandleAck_SendsNextBlockWhenBufferFull)
 
   ack ack_msg{.opc = htons(ACK), .block_num = htons(initial_block)};
 
-  const auto result = handle_ack(ack_msg, siter);
+  const auto result = handle_ack(ack_msg, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, initial_block + 1);
@@ -292,7 +279,7 @@ TEST_F(TestTftp, HandleAck_ClosesFileWhenTransferComplete)
 
   // Initialize RRQ session
   request req{.opc = RRQ, .mode = OCTET, .filename = test_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Buffer should be less than full for short file
   ASSERT_LT(siter->second.state.buffer.size(), DATAMSG_MAXLEN);
@@ -300,7 +287,7 @@ TEST_F(TestTftp, HandleAck_ClosesFileWhenTransferComplete)
 
   ack ack_msg{.opc = htons(ACK), .block_num = htons(final_block)};
 
-  const auto result = handle_ack(ack_msg, siter);
+  const auto result = handle_ack(ack_msg, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_FALSE(siter->second.state.file->is_open());
@@ -315,14 +302,14 @@ TEST_F(TestTftp, HandleAck_IgnoresOldAck)
 
   // Initialize RRQ session
   request req{.opc = RRQ, .mode = OCTET, .filename = test_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   const auto current_block = siter->second.state.block_num;
 
   // Send ACK for old block
   ack ack_msg{.opc = htons(ACK), .block_num = htons(current_block - 1)};
 
-  const auto result = handle_ack(ack_msg, siter);
+  const auto result = handle_ack(ack_msg, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, current_block);
@@ -337,7 +324,7 @@ TEST_F(TestTftp, HandleAck_HandlesBlockNumberWrapAround)
 
   // Initialize RRQ session
   request req{.opc = RRQ, .mode = OCTET, .filename = test_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Simulate wraparound by setting block_num to max value
   siter->second.state.block_num = 0xFFFF;
@@ -345,7 +332,7 @@ TEST_F(TestTftp, HandleAck_HandlesBlockNumberWrapAround)
 
   ack ack_msg{.opc = htons(ACK), .block_num = htons(0xFFFF)};
 
-  const auto result = handle_ack(ack_msg, siter);
+  const auto result = handle_ack(ack_msg, std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 0);
@@ -367,7 +354,8 @@ TEST_F(TestTftp, HandleData_ReturnsErrorWhenNotWrq)
   data_msg->opc = htons(DATA);
   data_msg->block_num = htons(1);
 
-  const auto result = handle_data(data_msg, buffer.size(), siter);
+  const auto result =
+      handle_data(data_msg, buffer.size(), std::addressof(siter->second));
 
   EXPECT_EQ(result, UNKNOWN_TID);
 }
@@ -380,7 +368,7 @@ TEST_F(TestTftp, HandleData_ReAcksDuplicatePacket)
 
   // Initialize WRQ session
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   siter->second.state.block_num = 5;
 
@@ -390,7 +378,8 @@ TEST_F(TestTftp, HandleData_ReAcksDuplicatePacket)
   data_msg->opc = htons(DATA);
   data_msg->block_num = htons(5);
 
-  const auto result = handle_data(data_msg, buffer.size(), siter);
+  const auto result =
+      handle_data(data_msg, buffer.size(), std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 5); // Block num should not advance
@@ -406,7 +395,7 @@ TEST_F(TestTftp, HandleData_WritesDataToFile)
 
   // Initialize WRQ session
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   ASSERT_EQ(siter->second.state.block_num, 0);
 
@@ -419,7 +408,8 @@ TEST_F(TestTftp, HandleData_WritesDataToFile)
   std::memcpy(buffer.data() + sizeof(messages::data), test_data.data(),
               test_data.size());
 
-  const auto result = handle_data(data_msg, buffer.size(), siter);
+  const auto result =
+      handle_data(data_msg, buffer.size(), std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 1);
@@ -435,7 +425,7 @@ TEST_F(TestTftp, HandleData_CompletesTransferOnShortPacket)
 
   // Initialize WRQ session
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Send short data block (less than 512 bytes signals end of transfer)
   const std::string test_data = "Final data";
@@ -446,7 +436,8 @@ TEST_F(TestTftp, HandleData_CompletesTransferOnShortPacket)
   std::memcpy(buffer.data() + sizeof(messages::data), test_data.data(),
               test_data.size());
 
-  const auto result = handle_data(data_msg, buffer.size(), siter);
+  const auto result =
+      handle_data(data_msg, buffer.size(), std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_FALSE(siter->second.state.file->is_open());
@@ -469,7 +460,7 @@ TEST_F(TestTftp, HandleData_HandlesFullBlockSize)
 
   // Initialize WRQ session
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Send full-size data block (512 bytes)
   std::vector<char> buffer(sizeof(messages::data) + DATALEN);
@@ -478,7 +469,8 @@ TEST_F(TestTftp, HandleData_HandlesFullBlockSize)
   data_msg->block_num = htons(1);
   std::fill(buffer.begin() + sizeof(messages::data), buffer.end(), 'A');
 
-  const auto result = handle_data(data_msg, buffer.size(), siter);
+  const auto result =
+      handle_data(data_msg, buffer.size(), std::addressof(siter->second));
 
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 1);
@@ -495,7 +487,7 @@ TEST_F(TestTftp, HandleData_HandlesMultipleBlocks)
 
   // Initialize WRQ session
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Send block 1
   std::vector<char> buffer1(sizeof(messages::data) + DATALEN);
@@ -504,7 +496,8 @@ TEST_F(TestTftp, HandleData_HandlesMultipleBlocks)
   data_msg1->block_num = htons(1);
   std::fill(buffer1.begin() + sizeof(messages::data), buffer1.end(), '1');
 
-  auto result = handle_data(data_msg1, buffer1.size(), siter);
+  auto result =
+      handle_data(data_msg1, buffer1.size(), std::addressof(siter->second));
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 1);
 
@@ -515,7 +508,8 @@ TEST_F(TestTftp, HandleData_HandlesMultipleBlocks)
   data_msg2->block_num = htons(2);
   std::fill(buffer2.begin() + sizeof(messages::data), buffer2.end(), '2');
 
-  result = handle_data(data_msg2, buffer2.size(), siter);
+  result =
+      handle_data(data_msg2, buffer2.size(), std::addressof(siter->second));
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 2);
 
@@ -526,7 +520,8 @@ TEST_F(TestTftp, HandleData_HandlesMultipleBlocks)
   data_msg3->block_num = htons(3);
   std::fill(buffer3.begin() + sizeof(messages::data), buffer3.end(), '3');
 
-  result = handle_data(data_msg3, buffer3.size(), siter);
+  result =
+      handle_data(data_msg3, buffer3.size(), std::addressof(siter->second));
   EXPECT_EQ(result, 0);
   EXPECT_FALSE(siter->second.state.file->is_open());
 
@@ -544,7 +539,7 @@ TEST_F(TestTftp, HandleData_HandlesBlockNumberWrapAround)
 
   // Initialize WRQ session
   request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, siter);
+  handle_request(req, std::addressof(siter->second));
 
   // Simulate being one before max block number
   siter->second.state.block_num = 0xFFFE;
@@ -556,7 +551,8 @@ TEST_F(TestTftp, HandleData_HandlesBlockNumberWrapAround)
   data_msg1->block_num = htons(0xFFFF);
   std::fill(buffer1.begin() + sizeof(messages::data), buffer1.end(), 'A');
 
-  auto result = handle_data(data_msg1, buffer1.size(), siter);
+  auto result =
+      handle_data(data_msg1, buffer1.size(), std::addressof(siter->second));
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 0xFFFF);
 
@@ -567,7 +563,8 @@ TEST_F(TestTftp, HandleData_HandlesBlockNumberWrapAround)
   data_msg2->block_num = htons(0);
   std::fill(buffer2.begin() + sizeof(messages::data), buffer2.end(), 'B');
 
-  result = handle_data(data_msg2, buffer2.size(), siter);
+  result =
+      handle_data(data_msg2, buffer2.size(), std::addressof(siter->second));
   EXPECT_EQ(result, 0);
   EXPECT_EQ(siter->second.state.block_num, 0);
 

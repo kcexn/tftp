@@ -20,10 +20,21 @@
 #include "tftp/tftp_client.hpp"
 namespace tftp {
 
-auto client_manager::client_t::connect(std::string hostname,
-                                       std::string port) -> client::connect_t
+auto client_manager::client_t::connect(
+    std::string hostname, std::string port) const noexcept -> client::connect_t
 {
   return {.hostname = std::move(hostname), .port = std::move(port), .ctx = ctx};
+}
+
+auto client_manager::client_t::put(
+    io::socket::socket_address<sockaddr_in6> server_addr, std::string local,
+    std::string remote, std::uint8_t mode) const noexcept -> client::put_file_t
+{
+  return {.server_addr = server_addr,
+          .local = std::move(local),
+          .remote = std::move(remote),
+          .ctx = ctx,
+          .mode = mode};
 }
 
 auto client_manager::make_client(async_context &ctx) -> client_t
@@ -31,8 +42,6 @@ auto client_manager::make_client(async_context &ctx) -> client_t
   auto tmp = client_t();
 
   tmp.ctx = std::addressof(ctx);
-  tmp.rctx.buffer.resize(messages::DATAMSG_MAXLEN);
-  tmp.rctx.msg.buffers = tmp.rctx.buffer;
 
   return tmp;
 } // GCOVR_EXCL_LINE

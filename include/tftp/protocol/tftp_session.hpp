@@ -48,9 +48,9 @@ struct session_t {
   /** @brief The invalid socket constant. */
   static constexpr auto INVALID_SOCKET = io::socket::INVALID_SOCKET;
   /** @brief Timeout min value. */
-  static constexpr auto TIMEOUT_MIN = std::chrono::milliseconds(2);
+  static constexpr auto TIMEOUT_MIN = duration(2);
   /** @brief Timeout max value. */
-  static constexpr auto TIMEOUT_MAX = std::chrono::milliseconds(200);
+  static constexpr auto TIMEOUT_MAX = duration(200);
 
   /** @brief The session state. */
   struct state_t {
@@ -83,9 +83,19 @@ struct session_t {
     std::uint8_t mode = 0;
   };
 
+  /**
+   * @brief Update session statistics.
+   * @param[in,out] statistics The sessions statistics to update.
+   * @returns A reference to the passed in statistics reference.
+   */
+  static inline auto update_statistics(
+      state_t::statistics_t &statistics) noexcept -> state_t::statistics_t &;
+
   /** @brief The session state. */
   state_t state;
 };
 
 } // namespace tftp
-#endif // TFTP_PROTOCOL_HPP
+
+#include "impl/tftp_session_impl.hpp" // IWYU pragma: export
+#endif                                // TFTP_PROTOCOL_HPP

@@ -106,11 +106,11 @@ static inline auto insert_data(std::vector<char> &buffer,
  * @return std::uint16_t Returns 0 on success. If there is a file read error, it
  * returns `messages::ACCESS_VIOLATION`.
  */
-static inline auto send_next(iterator_t siter) -> std::uint16_t
+static inline auto send_next(session_t *siter) -> std::uint16_t
 {
   using enum messages::opcode_t;
 
-  auto &[key, session] = *siter;
+  auto &session = *siter;
   auto &state = session.state;
   auto &buffer = state.buffer;
 
@@ -147,7 +147,7 @@ static inline auto send_next(iterator_t siter) -> std::uint16_t
 }
 
 #ifndef TFTP_SERVER_STATIC_TEST
-auto handle_request(messages::request req, iterator_t siter) -> std::uint16_t
+auto handle_request(messages::request req, session_t *siter) -> std::uint16_t
 {
   using enum messages::opcode_t;
   // Invalid request message.
@@ -158,7 +158,7 @@ auto handle_request(messages::request req, iterator_t siter) -> std::uint16_t
   if (req.opc == RRQ && req.mode == messages::MAIL)
     return messages::ILLEGAL_OPERATION;
 
-  auto &[key, session] = *siter;
+  auto &session = *siter;
   auto &state = session.state;
 
   state.opc = req.opc;
@@ -203,18 +203,16 @@ auto handle_request(messages::request req, iterator_t siter) -> std::uint16_t
  * @param siter An iterator pointing to the session.
  * @returns 0 if successful, a non-zero TFTP error otherwise.
  */
-auto handle_ack(messages::ack ack, iterator_t siter) -> std::uint16_t
+auto handle_ack(messages::ack ack, session_t *siter) -> std::uint16_t
 {
   using enum messages::opcode_t;
 
-  auto &[key, session] = *siter;
+  auto &session = *siter;
   auto &state = session.state;
 
-  if (state.opc != RRQ)
-    return messages::UNKNOWN_TID;
-
-  if (state.buffer.size() >= messages::DATAMSG_MAXLEN &&
-      ntohs(ack.block_num) == state.block_num)
+  if (state.block_num == 0 ||
+      (state.buffer.size() >= messages::DATAMSG_MAXLEN &&
+       ntohs(ack.block_num) == state.block_num))
   {
     return send_next(siter);
   }
@@ -226,11 +224,11 @@ auto handle_ack(messages::ack ack, iterator_t siter) -> std::uint16_t
 }
 
 auto handle_data(const messages::data *data, std::size_t len,
-                 iterator_t siter) -> std::uint16_t
+                 session_t *siter) -> std::uint16_t
 {
   using enum messages::opcode_t;
 
-  auto &[key, session] = *siter;
+  auto &session = *siter;
   auto &opc = session.state.opc;
   auto &block_num = session.state.block_num;
   auto &target = session.state.target;

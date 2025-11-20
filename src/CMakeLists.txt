@@ -21,14 +21,14 @@ target_link_libraries(
   spdlog::spdlog_header_only
 )
 
-# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-# add_executable(
-#   tftpd
-#   main.cpp
-# )
-# target_link_libraries(
-#   tftpd
-#   PRIVATE
-#   tftplib
-# )
-# install(TARGETS tftpd)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_executable(
+  tftp
+  main.cpp
+)
+target_link_libraries(
+  tftp
+  PRIVATE
+  tftplib
+)
+install(TARGETS tftp)

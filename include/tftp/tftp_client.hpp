@@ -35,25 +35,16 @@ public:
   /** @brief Socket message type. */
   using socket_message = io::socket::socket_message<sockaddr_in6>;
 
+  template <typename T>
+  constexpr explicit client_manager(
+      io::socket::socket_address<T> address) noexcept
+      : Base(address)
+  {}
+
   /** @brief A TFTP client. */
   struct client_t {
-    /** @brief A TFTP session. */
-    session_t session;
-    /** @brief Client context for reading. */
-    struct {
-      /** @brief Socket message to read into. */
-      socket_message msg;
-      /** @brief client read buffer. */
-      std::vector<std::byte> buffer;
-    } rctx;
-    /** @brief destination hostname. */
-    std::string hostname;
-    /** @brief destination filename */
-    std::string destination;
     /** @brief asynchronous context pointer. */
     async_context *ctx = nullptr;
-    /** @brief destination port number. */
-    unsigned short port = 0;
 
     /**
      * @brief connect the client to a TFTP server.
@@ -61,9 +52,28 @@ public:
      * @param port the port the remote host is listening on.
      * @returns A sender for the connect operation.
      */
-    auto connect(std::string hostname,
-                 std::string port = {}) -> client::connect_t;
+    [[nodiscard]] auto
+    connect(std::string hostname,
+            std::string port = "69") const noexcept -> client::connect_t;
+
+    /**
+     * @brief send a file to the tftp server.
+     * @param server_addr The address to send the file to.
+     * @param local the local file to send.
+     * @param remote the remote path to write to.
+     * @param mode the tftp transmission mode (default: netascii)
+     * @returns A sender for the put file operation.
+     */
+    [[nodiscard]] auto put(io::socket::socket_address<sockaddr_in6> server_addr,
+                           std::string local, std::string remote,
+                           std::uint8_t mode = messages::NETASCII)
+        const noexcept -> client::put_file_t;
   };
+
+  auto service(async_context &ctx, const socket_dialog &socket,
+               const std::shared_ptr<read_context> &rctx,
+               const std::span<const std::byte> &buf) noexcept -> void
+  {}
 
   /**
    * @brief client factory.
