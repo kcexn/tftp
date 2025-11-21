@@ -37,21 +37,21 @@ auto main(int argc, char *argv[]) -> int
   auto manager = client_manager();
   auto client = manager.make_client();
 
-  // {
-  //   sender auto put_file =
-  //       client.connect("localhost", "6969") | let_value([&](auto &&addr) {
-  //         return client.put(std::forward<decltype(addr)>(addr), "./tmp",
-  //                           "/tmp/test", messages::OCTET);
-  //       });
-  //   auto [status] = sync_wait(std::move(put_file)).value();
+  {
+    sender auto put_file =
+        client.connect("localhost", "6969") | let_value([&](auto &&addr) {
+          return client.put(std::forward<decltype(addr)>(addr), "./tmp",
+                            "/tmp/test", messages::OCTET);
+        });
+    auto [status] = sync_wait(std::move(put_file)).value();
 
-  //   auto &[error, message] = status;
-  //   if (error || !message.empty())
-  //   {
-  //     spdlog::error("{} {}", error, message);
-  //     return 0;
-  //   }
-  // }
+    auto &[error, message] = status;
+    if (error || !message.empty())
+    {
+      spdlog::error("{} {}", error, message);
+      return 0;
+    }
+  }
 
   {
     sender auto get_file =

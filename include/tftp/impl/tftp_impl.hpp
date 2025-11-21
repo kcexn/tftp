@@ -85,6 +85,21 @@ auto try_with(Receiver &&receiver, Fn &&handler,
 } // namespace detail
 
 template <typename Receiver>
+auto client_sender::client_state<Receiver>::error_handler(
+    const char *msg, std::streamsize len) noexcept -> void
+{
+  using namespace detail;
+
+  const auto *err = reinterpret_cast<const messages::error *>(msg);
+  auto code = ntohs(err->error);
+  auto message = get_error_message(err, len);
+
+  try_with(
+      std::move(receiver), [&] { this->finalize(status_t{code, message}); },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
 auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
 {
   auto &timer = session.state.timer;
@@ -155,9 +170,8 @@ auto connect_t::connect(Receiver &&receiver) noexcept -> state_t<Receiver>
 template <typename Receiver>
 auto put_file_t::state_t<Receiver>::start() noexcept -> void
 {
-  send_wrq();
   submit_recvmsg();
-  this->ctx->interrupt();
+  send_wrq();
 }
 
 template <typename Receiver>
@@ -192,6 +206,27 @@ auto put_file_t::state_t<Receiver>::send_wrq() noexcept -> void
 }
 
 template <typename Receiver>
+auto put_file_t::state_t<Receiver>::ack_handler(messages::ack ack) noexcept
+    -> void
+{
+  using namespace detail;
+  auto &session = this->session;
+  auto &receiver = this->receiver;
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        auto error = handle_ack(ack, std::addressof(session));
+        if (error || !session.state.file->is_open())
+          return this->finalize({error, ""});
+
+        submit_recvmsg();
+        submit_sendmsg();
+      },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
 auto put_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
 {
   using namespace stdexec;
@@ -208,6 +243,18 @@ auto put_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
   try_with(
       std::move(receiver),
       [&] {
+        sender auto sendmsg =
+            io::sendmsg(socket,
+                        socket_message{.address = sockmsg.address,
+                                       .buffers = state.buffer},
+                        0) |
+            then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
+              this->finalize(std::error_code(error, std::system_category()));
+            });
+
+        ctx->scope.spawn(std::move(sendmsg));
+
+        // timers.add notifies the ctx event-loop by calling ctx.interrupt().
         timer = ctx->timers.add(
             2 * avg_rtt,
             [&, retries = 0](auto) mutable noexcept {
@@ -223,16 +270,6 @@ auto put_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
                   [&]() noexcept { this->cleanup(); });
             },
             2 * avg_rtt);
-
-        sender auto sendmsg =
-            io::sendmsg(socket,
-                        socket_message{.address = sockmsg.address,
-                                       .buffers = state.buffer},
-                        0) |
-            then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
-              this->finalize(std::error_code(error, std::system_category()));
-            });
-        ctx->scope.spawn(std::move(sendmsg));
       },
       [&]() noexcept { this->cleanup(); });
 }
@@ -275,40 +312,18 @@ template <typename Receiver>
 auto put_file_t::state_t<Receiver>::route_message(
     const char *msg, std::streamsize len) noexcept -> void
 {
-  using namespace detail;
-  auto &receiver = this->receiver;
-  auto &session = this->session;
+  const auto *ack = reinterpret_cast<const messages::ack *>(msg);
+  switch (ntohs(ack->opc))
+  {
+    case messages::ERROR:
+      return this->error_handler(msg, len);
 
-  try_with(
-      std::move(receiver),
-      [&] {
-        const auto *opc = reinterpret_cast<const std::uint16_t *>(msg);
-        switch (ntohs(*opc))
-        {
-          case messages::ERROR:
-          {
-            const auto *err = reinterpret_cast<const messages::error *>(msg);
-            auto code = ntohs(err->error);
-            auto message = get_error_message(err, len);
-            return this->finalize(status_t{code, message});
-          }
+    case messages::ACK:
+      return ack_handler(*ack);
 
-          case messages::ACK:
-          {
-            const auto *ack = reinterpret_cast<const messages::ack *>(msg);
-            auto error = handle_ack(*ack, std::addressof(session));
-            if (error || !session.state.file->is_open())
-              return this->finalize({error, ""});
-
-            submit_sendmsg();
-            [[fallthrough]];
-          }
-
-          default: // non-ack/error messages are ignored.
-            submit_recvmsg();
-        }
-      },
-      [&]() noexcept { this->cleanup(); });
+    default: // non-ack/error messages are ignored.
+      submit_recvmsg();
+  }
 }
 
 template <typename Receiver>
@@ -338,9 +353,8 @@ auto put_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
 template <typename Receiver>
 auto get_file_t::state_t<Receiver>::start() noexcept -> void
 {
-  send_rrq();
   submit_recvmsg();
-  this->ctx->interrupt();
+  send_rrq();
 }
 
 template <typename Receiver>
@@ -375,6 +389,43 @@ auto get_file_t::state_t<Receiver>::send_rrq() noexcept -> void
 }
 
 template <typename Receiver>
+auto get_file_t::state_t<Receiver>::data_handler(
+    const char *msg, std::streamsize len) noexcept -> void
+{
+  using namespace detail;
+  auto &session = this->session;
+  auto &receiver = this->receiver;
+  auto &block_num = session.state.block_num;
+  auto &buffer = session.state.buffer;
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        const auto *data = reinterpret_cast<const messages::ack *>(msg);
+        auto error = handle_data(data, len, std::addressof(session));
+        if (error)
+          return this->finalize({error, ""});
+
+        if (ntohs(data->block_num) == block_num)
+        {
+          buffer.resize(sizeof(messages::ack));
+
+          auto *ack = reinterpret_cast<messages::ack *>(buffer.data());
+          ack->opc = htons(messages::ACK);
+          ack->block_num = data->block_num;
+
+          submit_sendmsg();
+        }
+
+        if (!session.state.file->is_open())
+          return this->finalize();
+
+        submit_recvmsg();
+      },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
 auto get_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
 {
   using namespace stdexec;
@@ -392,6 +443,18 @@ auto get_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
   try_with(
       std::move(receiver),
       [&] {
+        sender auto sendmsg =
+            io::sendmsg(socket,
+                        socket_message{.address = sockmsg.address,
+                                       .buffers = state.buffer},
+                        0) |
+            then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
+              this->finalize(std::error_code(error, std::system_category()));
+            });
+
+        ctx->scope.spawn(std::move(sendmsg));
+
+        // timers.add notifies the ctx event-loop by calling ctx.interrupt().
         timer = ctx->timers.add(
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
             5 * avg_rtt, [&](auto) noexcept {
@@ -405,17 +468,6 @@ auto get_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
                   },
                   [&]() noexcept { this->cleanup(); });
             });
-
-        sender auto sendmsg =
-            io::sendmsg(socket,
-                        socket_message{.address = sockmsg.address,
-                                       .buffers = state.buffer},
-                        0) |
-            then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
-              this->finalize(std::error_code(error, std::system_category()));
-            });
-
-        ctx->scope.spawn(std::move(sendmsg));
       },
       [&]() noexcept { this->cleanup(); });
 }
@@ -458,56 +510,18 @@ template <typename Receiver>
 auto get_file_t::state_t<Receiver>::route_message(
     const char *msg, std::streamsize len) noexcept -> void
 {
-  using namespace detail;
-  auto &receiver = this->receiver;
-  auto &session = this->session;
-  auto &block_num = session.state.block_num;
-  auto &buffer = session.state.buffer;
+  const auto *opc = reinterpret_cast<const std::uint16_t *>(msg);
+  switch (ntohs(*opc))
+  {
+    case messages::ERROR:
+      return this->error_handler(msg, len);
 
-  try_with(
-      std::move(receiver),
-      [&] {
-        const auto *opc = reinterpret_cast<const std::uint16_t *>(msg);
-        switch (ntohs(*opc))
-        {
-          case messages::ERROR:
-          {
-            const auto *err = reinterpret_cast<const messages::error *>(msg);
-            auto code = ntohs(err->error);
-            auto message = get_error_message(err, len);
-            return this->finalize(status_t{code, message});
-          }
+    case messages::DATA:
+      return data_handler(msg, len);
 
-          case messages::DATA:
-          {
-            const auto *data = reinterpret_cast<const messages::ack *>(msg);
-            auto error = handle_data(data, len, std::addressof(session));
-            if (error)
-              return this->finalize({error, ""});
-
-            if (ntohs(data->block_num) == block_num)
-            {
-              buffer.resize(sizeof(messages::ack));
-
-              auto *opc = reinterpret_cast<std::uint16_t *>(buffer.data());
-              *opc = htons(messages::ACK);
-
-              auto *block_num = opc + 1;
-              *block_num = data->block_num;
-
-              submit_sendmsg();
-            }
-
-            if (!session.state.file->is_open())
-              return this->finalize();
-            [[fallthrough]];
-          }
-
-          default: // non-ack/error messages are ignored.
-            submit_recvmsg();
-        }
-      },
-      [&]() noexcept { this->cleanup(); });
+    default: // non-data/error messages are ignored.
+      submit_recvmsg();
+  }
 }
 
 template <typename Receiver>

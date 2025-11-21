@@ -103,13 +103,26 @@ struct client_sender {
     /** @brief The asynchronous context. */
     async_context *ctx = nullptr;
 
+    /**
+     * @brief handle error messages
+     * @param msg The error message.
+     * @param len The length of the error message.
+     */
+    auto error_handler(const char *msg, std::streamsize len) noexcept -> void;
+
     /** @brief cleanup any lingering session state. */
     auto cleanup() noexcept -> void;
 
-    /** @brief Finalize the client session with a tftp status code. */
+    /**
+     * @brief Finalize the client session with a tftp status code.
+     * @param status The status message to finalize with. (default: OK)
+     */
     auto finalize(status_t status = {}) noexcept -> void;
 
-    /** @brief Finalize the client session with a system error. */
+    /**
+     * @brief Finalize the client session with a system error.
+     * @param error The error code to finalize with.
+     */
     auto finalize(std::error_code error) noexcept -> void;
   };
 };
@@ -168,6 +181,12 @@ struct put_file_t : client_sender {
     /** @brief Send a WRQ. */
     auto send_wrq() noexcept -> void;
 
+    /**
+     * @brief Ack handler.
+     * @param ack The ack message.
+     */
+    auto ack_handler(messages::ack ack) noexcept -> void;
+
     /** @brief Submit an asynchronous sendmsg to the context. */
     auto submit_sendmsg() noexcept -> void;
 
@@ -217,6 +236,13 @@ struct get_file_t : client_sender {
 
     /** @brief Send an RRQ. */
     auto send_rrq() noexcept -> void;
+
+    /**
+     * @brief Handle a DATA message.
+     * @param msg The data message.
+     * @param len the length of the message.
+     */
+    auto data_handler(const char *msg, std::streamsize len) noexcept -> void;
 
     /** @brief Submit an asynchronous sendmsg to the context. */
     auto submit_sendmsg() noexcept -> void;
