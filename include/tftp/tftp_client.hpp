@@ -28,18 +28,14 @@ template <typename UDPStreamHandler>
 using udp_base = net::service::async_udp_service<UDPStreamHandler, 0>;
 
 /** @brief A TFTP client manager. */
-class client_manager : public udp_base<client_manager> {
+class client_manager {
 public:
-  /** @brief The base class. */
-  using Base = udp_base<client_manager>;
+  /** @brief async context type. */
+  using async_context = net::service::async_context;
+  /** @brief context thread type. */
+  using context_thread = net::service::context_thread;
   /** @brief Socket message type. */
   using socket_message = io::socket::socket_message<sockaddr_in6>;
-
-  template <typename T>
-  constexpr explicit client_manager(
-      io::socket::socket_address<T> address) noexcept
-      : Base(address)
-  {}
 
   /** @brief A TFTP client. */
   struct client_t {
@@ -68,19 +64,29 @@ public:
                            std::string local, std::string remote,
                            std::uint8_t mode = messages::NETASCII)
         const noexcept -> client::put_file_t;
-  };
 
-  auto service(async_context &ctx, const socket_dialog &socket,
-               const std::shared_ptr<read_context> &rctx,
-               const std::span<const std::byte> &buf) noexcept -> void
-  {}
+    /**
+     * @brief get a file from the tftp server.
+     * @param server_addr The address of the TFTP server.
+     * @param remote the remote path to read from.
+     * @param local the local path to write to.
+     * @param mode the tftp transmission mode (default: netascii)
+     * @returns A sender for the put file operation.
+     */
+    [[nodiscard]] auto get(io::socket::socket_address<sockaddr_in6> server_addr,
+                           std::string remote, std::string local,
+                           std::uint8_t mode = messages::NETASCII)
+        const noexcept -> client::get_file_t;
+  };
 
   /**
    * @brief client factory.
-   * @param ctx An async context to construct the client on.
    * @returns A TFTP client.
    */
-  static auto make_client(async_context &ctx) -> client_t;
+  auto make_client() -> client_t;
+
+private:
+  context_thread ctx_;
 };
 } // namespace tftp
 #endif // TFTP_CLIENT_HPP

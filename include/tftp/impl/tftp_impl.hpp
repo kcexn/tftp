@@ -26,8 +26,15 @@
 #include <spdlog/spdlog.h>
 /** @brief TFTP client namespace. */
 namespace tftp::client {
-
+/** @brief Internal client implementation details. */
 namespace detail {
+/**
+ * @brief Validates and extracts message string from a TFTP error message.
+ * @param error A pointer to a TFTP error message.
+ * @param len The length of the TFTP error message.
+ * @returns An empty string_view if the message is invalid (not null
+ * terminated), a string_view of the message string otherwise.
+ */
 static inline auto
 get_error_message(const messages::error *error,
                   std::streamsize len) noexcept -> std::string_view
@@ -40,9 +47,22 @@ get_error_message(const messages::error *error,
   return begin;
 }
 
-template <typename Receiver, typename Fn>
-  requires std::invocable<Fn>
-auto try_with(Receiver &&receiver, Fn &&handler) noexcept -> void
+/**
+ * @brief Handles exceptions raised by the `handler` callback.
+ * @details try_with attempts to run the handler. If the handler raises
+ * an exception, try_with will run the cleanup method and forward an
+ * appropriate error to the receiver.
+ * @tparam Receiver The receiver type.
+ * @tparam Fn The handler type. Fn is invoked with no arguments.
+ * @tparam Cleanup The cleanup callback.
+ * @param receiver The receiver to forward errors to.
+ * @param handler The handler to attempt.
+ * @param cleanup The handler to run before forwarding the error.
+ */
+template <typename Receiver, typename Fn, typename Cleanup>
+  requires std::invocable<Fn> && std::invocable<Cleanup>
+auto try_with(Receiver &&receiver, Fn &&handler,
+              Cleanup &&cleanup) noexcept -> void
 {
   using namespace stdexec;
   try
@@ -51,16 +71,45 @@ auto try_with(Receiver &&receiver, Fn &&handler) noexcept -> void
   }
   catch (const std::bad_alloc &)
   {
+    std::forward<Cleanup>(cleanup)();
     set_error(std::forward<Receiver>(receiver),
               std::make_error_code(std::errc::not_enough_memory));
   }
   catch (...)
   {
+    std::forward<Cleanup>(cleanup)();
     set_error(std::forward<Receiver>(receiver),
               std::make_error_code(std::errc::state_not_recoverable));
   }
 }
 } // namespace detail
+
+template <typename Receiver>
+auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
+{
+  auto &timer = session.state.timer;
+  timer = ctx->timers.remove(timer);
+}
+
+template <typename Receiver>
+auto client_sender::client_state<Receiver>::finalize(status_t status) noexcept
+    -> void
+{
+  using namespace stdexec;
+  cleanup();
+
+  set_value(std::move(receiver), std::move(status));
+}
+
+template <typename Receiver>
+auto client_sender::client_state<Receiver>::finalize(
+    std::error_code error) noexcept -> void
+{
+  using namespace stdexec;
+  cleanup();
+
+  set_error(std::move(receiver), std::move(error));
+}
 
 template <typename Receiver>
 auto connect_t::state_t<Receiver>::start() noexcept -> void
@@ -108,33 +157,38 @@ auto put_file_t::state_t<Receiver>::start() noexcept -> void
 {
   send_wrq();
   submit_recvmsg();
+  this->ctx->interrupt();
 }
 
 template <typename Receiver>
 auto put_file_t::state_t<Receiver>::send_wrq() noexcept -> void
 {
   using namespace detail;
+  auto &receiver = this->receiver;
+  auto &state = this->session.state;
+  auto &buffer = state.buffer;
 
-  try_with(std::move(receiver), [&] {
-    auto &state = session.state;
-    auto &buffer = state.buffer;
-    auto opcode = htons(state.opc = messages::WRQ);
+  try_with(
+      std::move(receiver),
+      [&] {
+        auto opcode = htons(state.opc = messages::WRQ);
 
-    buffer.resize(sizeof(opcode));
+        buffer.resize(sizeof(opcode));
 
-    auto *msg = buffer.data();
-    std::memcpy(msg, &opcode, sizeof(opcode));
+        auto *msg = buffer.data();
+        std::memcpy(msg, &opcode, sizeof(opcode));
 
-    const auto *begin = state.target.c_str();
-    const auto *end = begin + std::strlen(begin) + 1;
-    buffer.insert(buffer.end(), begin, end);
+        const auto *begin = state.target.c_str();
+        const auto *end = begin + std::strlen(begin) + 1;
+        buffer.insert(buffer.end(), begin, end);
 
-    begin = messages::mode_to_str(state.mode);
-    end = begin + std::strlen(begin) + 1;
-    buffer.insert(buffer.end(), begin, end);
+        begin = messages::mode_to_str(state.mode);
+        end = begin + std::strlen(begin) + 1;
+        buffer.insert(buffer.end(), begin, end);
 
-    submit_sendmsg();
-  });
+        submit_sendmsg();
+      },
+      [&]() noexcept { this->cleanup(); });
 }
 
 template <typename Receiver>
@@ -142,45 +196,45 @@ auto put_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
 {
   using namespace stdexec;
   using namespace detail;
-  auto &state = session.state;
+  auto &ctx = this->ctx;
+  auto &receiver = this->receiver;
+  auto &state = this->session.state;
+  auto &sockmsg = this->sockmsg;
+  auto &socket = this->socket;
 
-  try_with(std::move(receiver), [&] {
-    sender auto sendmsg =
-        io::sendmsg(
-            socket,
-            socket_message{.address = sockmsg.address, .buffers = state.buffer},
-            0) |
-        then([&](auto &&len) noexcept {
-          using namespace std::chrono;
+  const auto &[_, avg_rtt] = session_t::update_statistics(state.statistics);
+  auto &timer = state.timer = ctx->timers.remove(state.timer);
 
-          const auto &[_, avg_rtt] =
-              session_t::update_statistics(state.statistics);
-
-          try_with(std::move(receiver), [&] {
-            auto &timer = state.timer = ctx->timers.remove(state.timer);
-            timer = ctx->timers.add(
-                2 * avg_rtt,
-                [&, retries = 0](auto &&tid) mutable {
-                  constexpr auto MAX_RETRIES = 5;
-                  try_with(std::move(receiver), [&] {
+  try_with(
+      std::move(receiver),
+      [&] {
+        timer = ctx->timers.add(
+            2 * avg_rtt,
+            [&, retries = 0](auto) mutable noexcept {
+              constexpr auto MAX_RETRIES = 5;
+              try_with(
+                  std::move(receiver),
+                  [&] {
                     if (retries++ >= MAX_RETRIES)
-                    {
-                      cleanup();
-                      return set_value(std::move(receiver),
-                                       status_t{0, "Timed out"});
-                    }
+                      return this->finalize({0, "Timed out"});
+
                     submit_sendmsg();
-                  });
-                },
-                2 * avg_rtt);
-          });
-        }) |
-        upon_error([&](auto &&error) noexcept {
-          cleanup();
-          set_error(std::move(receiver), std::forward<decltype(error)>(error));
-        });
-    ctx->scope.spawn(std::move(sendmsg));
-  });
+                  },
+                  [&]() noexcept { this->cleanup(); });
+            },
+            2 * avg_rtt);
+
+        sender auto sendmsg =
+            io::sendmsg(socket,
+                        socket_message{.address = sockmsg.address,
+                                       .buffers = state.buffer},
+                        0) |
+            then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
+              this->finalize(std::error_code(error, std::system_category()));
+            });
+        ctx->scope.spawn(std::move(sendmsg));
+      },
+      [&]() noexcept { this->cleanup(); });
 }
 
 template <typename Receiver>
@@ -188,64 +242,73 @@ auto put_file_t::state_t<Receiver>::submit_recvmsg() noexcept -> void
 {
   using namespace stdexec;
   using namespace detail;
-  try_with(std::move(receiver), [&] {
-    sockmsg.buffers = recv_buffer;
-    sender auto recvmsg =
-        io::recvmsg(socket, sockmsg, 0) | then([&](auto &&len) noexcept {
-          if (len < static_cast<std::streamsize>(sizeof(std::uint16_t)) ||
-              sockmsg.flags & MSG_TRUNC)
-          {
-            cleanup();
-            return set_value(std::move(receiver),
-                             status_t{messages::ILLEGAL_OPERATION,
-                                      "Invalid server response."});
-          }
+  auto &ctx = this->ctx;
+  auto &receiver = this->receiver;
+  auto &sockmsg = this->sockmsg;
+  auto &socket = this->socket;
+  auto &recv_buffer = this->recv_buffer;
 
-          try_with(std::move(receiver), [&] {
-            auto *msg = reinterpret_cast<std::uint16_t *>(recv_buffer.data());
-            if (ntohs(*msg) == messages::ERROR)
-            {
-              cleanup();
-              auto *errmsg = reinterpret_cast<messages::error *>(msg);
-              auto error_code = ntohs(errmsg->error);
-              auto error_message = get_error_message(errmsg, len);
-
-              return set_value(std::move(receiver),
-                               status_t{error_code, error_message});
-            }
-
-            if (ntohs(*msg) == messages::ACK)
-            {
-              auto *ackmsg = reinterpret_cast<messages::ack *>(msg);
-              auto error = handle_ack(*ackmsg, std::addressof(session));
-              if (error || !session.state.file->is_open())
+  try_with(
+      std::move(receiver),
+      [&] {
+        sockmsg.buffers = recv_buffer;
+        sender auto recvmsg =
+            io::recvmsg(socket, sockmsg, 0) | then([&](auto &&len) noexcept {
+              if (len < static_cast<std::streamsize>(sizeof(std::uint16_t)) ||
+                  sockmsg.flags & MSG_TRUNC)
               {
-                cleanup();
-                if (!error)
-                  return set_value(std::move(receiver), status_t{});
-
-                return set_value(std::move(receiver), status_t{error, ""});
+                return this->finalize(
+                    {messages::ILLEGAL_OPERATION, "Invalid server response."});
               }
 
-              submit_sendmsg();
-            }
-
-            submit_recvmsg();
-          });
-        }) |
-        upon_error([&](auto &&error) noexcept {
-          cleanup();
-          set_error(std::move(receiver), std::forward<decltype(error)>(error));
-        });
-    ctx->scope.spawn(std::move(recvmsg));
-  });
+              route_message(recv_buffer.data(), len);
+            }) |
+            upon_error([&](int error) noexcept {
+              this->finalize(std::error_code(error, std::system_category()));
+            });
+        ctx->scope.spawn(std::move(recvmsg));
+      },
+      [&]() noexcept { this->cleanup(); });
 }
 
 template <typename Receiver>
-auto put_file_t::state_t<Receiver>::cleanup() noexcept -> void
+auto put_file_t::state_t<Receiver>::route_message(
+    const char *msg, std::streamsize len) noexcept -> void
 {
-  auto &timer = session.state.timer;
-  timer = ctx->timers.remove(timer);
+  using namespace detail;
+  auto &receiver = this->receiver;
+  auto &session = this->session;
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        const auto *opc = reinterpret_cast<const std::uint16_t *>(msg);
+        switch (ntohs(*opc))
+        {
+          case messages::ERROR:
+          {
+            const auto *err = reinterpret_cast<const messages::error *>(msg);
+            auto code = ntohs(err->error);
+            auto message = get_error_message(err, len);
+            return this->finalize(status_t{code, message});
+          }
+
+          case messages::ACK:
+          {
+            const auto *ack = reinterpret_cast<const messages::ack *>(msg);
+            auto error = handle_ack(*ack, std::addressof(session));
+            if (error || !session.state.file->is_open())
+              return this->finalize({error, ""});
+
+            submit_sendmsg();
+            [[fallthrough]];
+          }
+
+          default: // non-ack/error messages are ignored.
+            submit_recvmsg();
+        }
+      },
+      [&]() noexcept { this->cleanup(); });
 }
 
 template <typename Receiver>
@@ -264,12 +327,214 @@ auto put_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
   auto recvbuf = std::vector<char>();
   recvbuf.resize(messages::DATAMSG_MAXLEN);
 
-  return {.session = std::move(session),
-          .sockmsg = socket_message{.address = {server_addr}},
-          .recv_buffer = std::move(recvbuf),
-          .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
-          .receiver = std::forward<Receiver>(receiver),
-          .ctx = ctx};
+  return {{.session = std::move(session),
+           .sockmsg = socket_message{.address = {server_addr}},
+           .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
+           .recv_buffer = std::move(recvbuf),
+           .receiver = std::forward<Receiver>(receiver),
+           .ctx = ctx}};
+}
+
+template <typename Receiver>
+auto get_file_t::state_t<Receiver>::start() noexcept -> void
+{
+  send_rrq();
+  submit_recvmsg();
+  this->ctx->interrupt();
+}
+
+template <typename Receiver>
+auto get_file_t::state_t<Receiver>::send_rrq() noexcept -> void
+{
+  using namespace detail;
+  auto &receiver = this->receiver;
+  auto &state = this->session.state;
+  auto &buffer = state.buffer;
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        auto opcode = htons(state.opc = messages::RRQ);
+
+        buffer.resize(sizeof(opcode));
+
+        auto *msg = buffer.data();
+        std::memcpy(msg, &opcode, sizeof(opcode));
+
+        const auto *begin = state.target.c_str();
+        const auto *end = begin + std::strlen(begin) + 1;
+        buffer.insert(buffer.end(), begin, end);
+
+        begin = messages::mode_to_str(state.mode);
+        end = begin + std::strlen(begin) + 1;
+        buffer.insert(buffer.end(), begin, end);
+
+        submit_sendmsg();
+      },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
+auto get_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
+{
+  using namespace stdexec;
+  using namespace detail;
+  auto &receiver = this->receiver;
+  auto &sockmsg = this->sockmsg;
+  auto &socket = this->socket;
+  auto &state = this->session.state;
+  auto &file = state.file;
+  auto &ctx = this->ctx;
+
+  const auto &[_, avg_rtt] = session_t::update_statistics(state.statistics);
+  auto &timer = state.timer = ctx->timers.remove(state.timer);
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        timer = ctx->timers.add(
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
+            5 * avg_rtt, [&](auto) noexcept {
+              try_with(
+                  std::move(receiver),
+                  [&] {
+                    if (file->is_open())
+                      return this->finalize({0, "Timed out"});
+
+                    this->finalize();
+                  },
+                  [&]() noexcept { this->cleanup(); });
+            });
+
+        sender auto sendmsg =
+            io::sendmsg(socket,
+                        socket_message{.address = sockmsg.address,
+                                       .buffers = state.buffer},
+                        0) |
+            then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
+              this->finalize(std::error_code(error, std::system_category()));
+            });
+
+        ctx->scope.spawn(std::move(sendmsg));
+      },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
+auto get_file_t::state_t<Receiver>::submit_recvmsg() noexcept -> void
+{
+  using namespace stdexec;
+  using namespace detail;
+  auto &receiver = this->receiver;
+  auto &sockmsg = this->sockmsg;
+  auto &socket = this->socket;
+  auto &recv_buffer = this->recv_buffer;
+  auto &ctx = this->ctx;
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        sockmsg.buffers = recv_buffer;
+        sender auto recvmsg =
+            io::recvmsg(socket, sockmsg, 0) | then([&](auto &&len) noexcept {
+              if (len < static_cast<std::streamsize>(sizeof(std::uint16_t)) ||
+                  sockmsg.flags & MSG_TRUNC)
+              {
+                return this->finalize(
+                    {messages::ILLEGAL_OPERATION, "Invalid server response."});
+              }
+
+              route_message(recv_buffer.data(), len);
+            }) |
+            upon_error([&](int error) noexcept {
+              this->finalize(std::error_code(error, std::system_category()));
+            });
+        ctx->scope.spawn(std::move(recvmsg));
+      },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
+auto get_file_t::state_t<Receiver>::route_message(
+    const char *msg, std::streamsize len) noexcept -> void
+{
+  using namespace detail;
+  auto &receiver = this->receiver;
+  auto &session = this->session;
+  auto &block_num = session.state.block_num;
+  auto &buffer = session.state.buffer;
+
+  try_with(
+      std::move(receiver),
+      [&] {
+        const auto *opc = reinterpret_cast<const std::uint16_t *>(msg);
+        switch (ntohs(*opc))
+        {
+          case messages::ERROR:
+          {
+            const auto *err = reinterpret_cast<const messages::error *>(msg);
+            auto code = ntohs(err->error);
+            auto message = get_error_message(err, len);
+            return this->finalize(status_t{code, message});
+          }
+
+          case messages::DATA:
+          {
+            const auto *data = reinterpret_cast<const messages::ack *>(msg);
+            auto error = handle_data(data, len, std::addressof(session));
+            if (error)
+              return this->finalize({error, ""});
+
+            if (ntohs(data->block_num) == block_num)
+            {
+              buffer.resize(sizeof(messages::ack));
+
+              auto *opc = reinterpret_cast<std::uint16_t *>(buffer.data());
+              *opc = htons(messages::ACK);
+
+              auto *block_num = opc + 1;
+              *block_num = data->block_num;
+
+              submit_sendmsg();
+            }
+
+            if (!session.state.file->is_open())
+              return this->finalize();
+            [[fallthrough]];
+          }
+
+          default: // non-ack/error messages are ignored.
+            submit_recvmsg();
+        }
+      },
+      [&]() noexcept { this->cleanup(); });
+}
+
+template <typename Receiver>
+auto get_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
+{
+  if (mode == messages::MAIL)
+    throw std::invalid_argument("Mail mode is not allowed in read requests.");
+
+  auto buffer = std::vector<char>();
+  buffer.reserve(messages::DATAMSG_MAXLEN + messages::DATALEN);
+
+  auto session = session_t{
+      .state = {.target = std::move(remote),
+                .buffer = std::move(buffer),
+                .file = std::make_shared<std::fstream>(
+                    local, std::ios::out | std::ios::trunc | std::ios::binary),
+                .mode = mode}};
+
+  auto recvbuf = std::vector<char>();
+  recvbuf.resize(messages::DATAMSG_MAXLEN);
+
+  return {{.session = std::move(session),
+           .sockmsg = socket_message{.address = {server_addr}},
+           .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
+           .recv_buffer = std::move(recvbuf),
+           .receiver = std::forward<Receiver>(receiver),
+           .ctx = ctx}};
 }
 } // namespace tftp::client.
 #endif // TFTP_IMPL_HPP

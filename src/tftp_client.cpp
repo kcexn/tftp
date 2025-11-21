@@ -37,13 +37,23 @@ auto client_manager::client_t::put(
           .mode = mode};
 }
 
-auto client_manager::make_client(async_context &ctx) -> client_t
+auto client_manager::client_t::get(
+    io::socket::socket_address<sockaddr_in6> server_addr, std::string remote,
+    std::string local, std::uint8_t mode) const noexcept -> client::get_file_t
 {
-  auto tmp = client_t();
+  return {.server_addr = server_addr,
+          .local = std::move(local),
+          .remote = std::move(remote),
+          .ctx = ctx,
+          .mode = mode};
+}
 
-  tmp.ctx = std::addressof(ctx);
+auto client_manager::make_client() -> client_t
+{
+  if (ctx_.state == ctx_.PENDING)
+    ctx_.start();
 
-  return tmp;
+  return {.ctx = std::addressof(ctx_)};
 } // GCOVR_EXCL_LINE
 
 } // namespace tftp

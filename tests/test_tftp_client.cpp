@@ -18,23 +18,21 @@
 #include "tftp/tftp_client.hpp"
 
 #include <gtest/gtest.h>
-#include <net/cppnet.hpp>
 
 using namespace tftp;
 
 TEST(TftpClientTest, MakeClient)
 {
-  net::service::async_context ctx;
-  auto client = client_manager::make_client(ctx);
+  auto manager = client_manager();
+  auto client = manager.make_client();
 
-  ASSERT_NE(client.ctx, nullptr);
-  EXPECT_EQ(client.ctx, &ctx);
+  EXPECT_NE(client.ctx, nullptr);
 }
 
 TEST(TftpClientTest, Connect)
 {
-  net::service::async_context ctx;
-  auto client = client_manager::make_client(ctx);
+  auto manager = client_manager();
+  auto client = manager.make_client();
 
   std::string hostname = "localhost";
   std::string port = "69";
@@ -42,7 +40,6 @@ TEST(TftpClientTest, Connect)
 
   EXPECT_EQ(connect_sender.hostname, hostname);
   EXPECT_EQ(connect_sender.port, port);
-  EXPECT_EQ(connect_sender.ctx, &ctx);
 }
 
 // Mock getaddrinfo
@@ -78,8 +75,8 @@ TEST(ConnectTest, GetAddrInfoError)
   getaddrinfo_err = EAI_FAIL;
   getaddrinfo_res = nullptr;
 
-  net::service::async_context ctx;
-  auto client = client_manager::make_client(ctx);
+  auto manager = client_manager();
+  auto client = manager.make_client();
   auto connect_sender = client.connect("localhost", "69");
 
   EXPECT_THROW(sync_wait(std::move(connect_sender)), std::system_error);
@@ -90,8 +87,8 @@ TEST(ConnectTest, GetAddrInfoEmpty)
   getaddrinfo_err = 0;
   getaddrinfo_res = nullptr;
 
-  net::service::async_context ctx;
-  auto client = client_manager::make_client(ctx);
+  auto manager = client_manager();
+  auto client = manager.make_client();
   auto connect_sender = client.connect("localhost", "69");
 
   try
@@ -120,8 +117,8 @@ TEST(ConnectTest, Connects)
   ai->ai_next = nullptr;
   getaddrinfo_res = ai;
 
-  net::service::async_context ctx;
-  auto client = client_manager::make_client(ctx);
+  auto manager = client_manager();
+  auto client = manager.make_client();
   auto connect_sender = client.connect("localhost", "69");
 
   auto [addr] = stdexec::sync_wait(std::move(connect_sender)).value();

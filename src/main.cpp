@@ -20,7 +20,6 @@
 
 #include <csignal>
 #include <cstdlib>
-#include <thread>
 
 using namespace net::service;
 using namespace tftp;
@@ -34,47 +33,40 @@ struct config {
 auto main(int argc, char *argv[]) -> int
 {
   using namespace stdexec;
-  using socket_address = io::socket::socket_address<sockaddr_in6>;
 
-  auto address = socket_address();
-  address->sin6_family = AF_INET;
+  auto manager = client_manager();
+  auto client = manager.make_client();
 
-  auto ctx = async_context();
-  client_manager manager{address};
-  auto &sockets = ctx.timers.sockets;
-  ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets.data());
-  ctx.isr(ctx.poller.emplace(sockets[0]), [&]() noexcept -> bool {
-    auto sigmask_ = ctx.sigmask.exchange(0);
-    auto mask = sigmask_;
-    for (int signum = 0; (mask = sigmask_ >> signum); ++signum)
+  // {
+  //   sender auto put_file =
+  //       client.connect("localhost", "6969") | let_value([&](auto &&addr) {
+  //         return client.put(std::forward<decltype(addr)>(addr), "./tmp",
+  //                           "/tmp/test", messages::OCTET);
+  //       });
+  //   auto [status] = sync_wait(std::move(put_file)).value();
+
+  //   auto &[error, message] = status;
+  //   if (error || !message.empty())
+  //   {
+  //     spdlog::error("{} {}", error, message);
+  //     return 0;
+  //   }
+  // }
+
+  {
+    sender auto get_file =
+        client.connect("localhost", "6969") | let_value([&](auto &&addr) {
+          return client.get(std::forward<decltype(addr)>(addr), "/tmp/test",
+                            "./test", messages::OCTET);
+        });
+    auto [status] = sync_wait(std::move(get_file)).value();
+    auto &[error, message] = status;
+    if (error || !message.empty())
     {
-      if (mask & (1 << 0))
-        manager.signal_handler(signum);
+      spdlog::error("{} {}", error, message);
+      return 0;
     }
-    if (sigmask_ & (1 << ctx.terminate))
-      ctx.scope.request_stop();
+  }
 
-    return !ctx.scope.get_stop_token().stop_requested();
-  });
-
-  manager.start(ctx);
-
-  auto thread = std::thread([&] { ctx.run(); });
-
-  auto client = client_manager::make_client(ctx);
-
-  sender auto put_file =
-      client.connect("localhost", "6969") | let_value([&](auto &&addr) {
-        return client.put(std::forward<decltype(addr)>(addr), "./tmp",
-                          "/tmp/test", messages::OCTET);
-      });
-  auto [status] = sync_wait(std::move(put_file)).value();
-
-  auto &[error, message] = status;
-  if (error || !message.empty())
-    spdlog::error("{} {}", error, message);
-
-  ctx.signal(ctx.terminate);
-  thread.join();
   return 0;
 }

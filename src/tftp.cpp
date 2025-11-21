@@ -45,13 +45,13 @@ static inline auto insert_data(std::vector<char> &buffer,
 {
   using enum messages::mode_t;
 
-  if (mode != NETASCII)
+  if (mode == OCTET)
   {
     buffer.insert(buffer.end(), buf.begin(), buf.end());
     return;
   }
 
-  // NETASCII processing.
+  // NETASCII/MAIL processing.
   for (const auto chr : buf)
   {
     // Skip bare \0 bytes so as to not confuse \r\0 handling.
@@ -229,13 +229,7 @@ auto handle_data(const messages::data *data, std::size_t len,
   using enum messages::opcode_t;
 
   auto &session = *siter;
-  auto &opc = session.state.opc;
   auto &block_num = session.state.block_num;
-  auto &target = session.state.target;
-  auto &tmp = session.state.tmp;
-
-  if (opc != WRQ)
-    return messages::UNKNOWN_TID;
 
   // Wraps block_num around
   auto next_block = static_cast<std::uint16_t>(block_num + 1);
@@ -255,13 +249,7 @@ auto handle_data(const messages::data *data, std::size_t len,
 
   // File writing is complete.
   if (len < messages::DATALEN)
-  {
     file->close();
-    auto err = std::error_code();
-    std::filesystem::rename(tmp, target, err);
-    if (err != std::errc{}) [[unlikely]]
-      return messages::ACCESS_VIOLATION; // GCOVR_EXCL_LINE
-  }
 
   return 0;
 }

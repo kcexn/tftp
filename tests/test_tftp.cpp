@@ -343,23 +343,6 @@ TEST_F(TestTftp, HandleAck_HandlesBlockNumberWrapAround)
 // =============================================================================
 // handle_data Tests
 // =============================================================================
-
-TEST_F(TestTftp, HandleData_ReturnsErrorWhenNotWrq)
-{
-  auto siter = create_session();
-  siter->second.state.opc = RRQ;
-
-  std::vector<char> buffer(sizeof(messages::data) + 100);
-  auto *data_msg = reinterpret_cast<messages::data *>(buffer.data());
-  data_msg->opc = htons(DATA);
-  data_msg->block_num = htons(1);
-
-  const auto result =
-      handle_data(data_msg, buffer.size(), std::addressof(siter->second));
-
-  EXPECT_EQ(result, UNKNOWN_TID);
-}
-
 TEST_F(TestTftp, HandleData_ReAcksDuplicatePacket)
 {
   const auto target_file = filesystem::tmpname();
@@ -424,8 +407,8 @@ TEST_F(TestTftp, HandleData_CompletesTransferOnShortPacket)
   auto siter = create_session();
 
   // Initialize WRQ session
-  request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, std::addressof(siter->second));
+  siter->second.state.file = std::make_shared<std::fstream>(
+      target_file, std::ios::out | std::ios::trunc | std::ios::binary);
 
   // Send short data block (less than 512 bytes signals end of transfer)
   const std::string test_data = "Final data";
@@ -485,9 +468,8 @@ TEST_F(TestTftp, HandleData_HandlesMultipleBlocks)
   std::filesystem::remove(target_file);
   auto siter = create_session();
 
-  // Initialize WRQ session
-  request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
-  handle_request(req, std::addressof(siter->second));
+  siter->second.state.file = std::make_shared<std::fstream>(
+      target_file, std::ios::out | std::ios::trunc | std::ios::binary);
 
   // Send block 1
   std::vector<char> buffer1(sizeof(messages::data) + DATALEN);
