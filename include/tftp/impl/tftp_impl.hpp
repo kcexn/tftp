@@ -335,12 +335,8 @@ auto put_file_t::state_t<Receiver>::route_message(
 template <typename Receiver>
 auto put_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
 {
-  auto buffer = std::vector<char>();
-  buffer.reserve(messages::DATAMSG_MAXLEN + messages::DATALEN);
-
   auto session =
       session_t{.state = {.target = std::move(remote),
-                          .buffer = std::move(buffer),
                           .file = std::make_shared<std::fstream>(
                               local, std::ios::in | std::ios::binary),
                           .mode = mode}};
@@ -542,12 +538,8 @@ auto get_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
   if (mode == messages::MAIL)
     throw std::invalid_argument("Mail mode is not allowed in read requests.");
 
-  auto buffer = std::vector<char>();
-  buffer.reserve(messages::DATAMSG_MAXLEN + messages::DATALEN);
-
   auto session = session_t{
       .state = {.target = std::move(remote),
-                .buffer = std::move(buffer),
                 .file = std::make_shared<std::fstream>(
                     local, std::ios::out | std::ios::trunc | std::ios::binary),
                 .mode = mode}};
