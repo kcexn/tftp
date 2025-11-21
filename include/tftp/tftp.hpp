@@ -90,14 +90,14 @@ struct client_sender {
 
   /** @brief common elements for all tftp client operation states. */
   template <typename Receiver> struct client_state {
+    /** @brief The receive buffer. */
+    std::array<char, messages::DATAMSG_MAXLEN> recv_buffer{};
     /** @brief The tftp client session details */
     session_t session;
     /** @brief The socket message type. */
     socket_message sockmsg;
     /** @brief The client socket. */
     socket_dialog socket;
-    /** @brief The receive buffer. */
-    std::vector<char> recv_buffer;
     /** @brief The operation receiver. */
     Receiver receiver;
     /** @brief The asynchronous context. */
@@ -125,10 +125,28 @@ struct client_sender {
      */
     auto finalize(std::error_code error) noexcept -> void;
   };
+
+  // common client sender members.
+  /** @brief address of the tftp server. */
+  socket_address<sockaddr_in6> server_addr;
+  /** @brief local file path to send. */
+  std::filesystem::path local;
+  /** @brief remote file path to write to. */
+  std::filesystem::path remote;
+  /** @brief The asynchronous context. */
+  async_context *ctx = nullptr;
+  /** @brief The tftp transmission mode. */
+  std::uint8_t mode = 0;
 };
 
 /** @brief The sender for an asynchronous connect. */
-struct connect_t : client_sender {
+struct connect_t {
+  /** @brief sender concept. */
+  using sender_concept = stdexec::sender_t;
+  /** @brief completion signature set value types. */
+  using set_value_t = stdexec::set_value_t;
+  /** @brief set error types. */
+  using set_error_t = stdexec::set_error_t;
   /** @brief Sender completion signature. */
   using completion_signatures =
       stdexec::completion_signatures<set_value_t(socket_address<sockaddr_in6>),
@@ -145,8 +163,6 @@ struct connect_t : client_sender {
     std::string port;
     /** @brief The receiver to send the final value to. */
     Receiver receiver;
-    /** @brief The asynchronous context. */
-    async_context *ctx = nullptr;
   };
 
   /**
@@ -162,8 +178,6 @@ struct connect_t : client_sender {
   std::string hostname;
   /** @brief port to connect to. */
   std::string port;
-  /** @brief The asynchronous context. */
-  async_context *ctx = nullptr;
 };
 
 /** @brief The sender for an asynchronous put. */
@@ -209,17 +223,6 @@ struct put_file_t : client_sender {
    */
   template <typename Receiver>
   auto connect(Receiver &&receiver) -> state_t<Receiver>;
-
-  /** @brief address of the tftp server. */
-  socket_address<sockaddr_in6> server_addr;
-  /** @brief local file path to send. */
-  std::filesystem::path local;
-  /** @brief remote file path to write to. */
-  std::filesystem::path remote;
-  /** @brief The asynchronous context. */
-  async_context *ctx = nullptr;
-  /** @brief The tftp transmission mode. */
-  std::uint8_t mode = 0;
 };
 
 /** @brief The sender for an asynchronous get. */
@@ -266,17 +269,6 @@ struct get_file_t : client_sender {
    */
   template <typename Receiver>
   auto connect(Receiver &&receiver) -> state_t<Receiver>;
-
-  /** @brief address of the tftp server. */
-  socket_address<sockaddr_in6> server_addr;
-  /** @brief local file path to send. */
-  std::filesystem::path local;
-  /** @brief remote file path to write to. */
-  std::filesystem::path remote;
-  /** @brief The asynchronous context. */
-  async_context *ctx = nullptr;
-  /** @brief The tftp transmission mode. */
-  std::uint8_t mode = 0;
 };
 
 } // namespace client.

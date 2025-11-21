@@ -48,9 +48,9 @@ public:
      * @param port the port the remote host is listening on.
      * @returns A sender for the connect operation.
      */
-    [[nodiscard]] auto
+    [[nodiscard]] static auto
     connect(std::string hostname,
-            std::string port = "69") const noexcept -> client::connect_t;
+            std::string port = "69") noexcept -> client::connect_t;
 
     /**
      * @brief send a file to the tftp server.

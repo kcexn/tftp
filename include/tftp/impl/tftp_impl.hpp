@@ -163,8 +163,7 @@ auto connect_t::connect(Receiver &&receiver) noexcept -> state_t<Receiver>
 {
   return {.hostname = std::move(hostname),
           .port = std::move(port),
-          .receiver = std::forward<Receiver>(receiver),
-          .ctx = ctx};
+          .receiver = std::forward<Receiver>(receiver)};
 }
 
 template <typename Receiver>
@@ -341,13 +340,9 @@ auto put_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
                               local, std::ios::in | std::ios::binary),
                           .mode = mode}};
 
-  auto recvbuf = std::vector<char>();
-  recvbuf.resize(messages::DATAMSG_MAXLEN);
-
   return {{.session = std::move(session),
            .sockmsg = socket_message{.address = {server_addr}},
            .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
-           .recv_buffer = std::move(recvbuf),
            .receiver = std::forward<Receiver>(receiver),
            .ctx = ctx}};
 }
@@ -544,13 +539,9 @@ auto get_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
                     local, std::ios::out | std::ios::trunc | std::ios::binary),
                 .mode = mode}};
 
-  auto recvbuf = std::vector<char>();
-  recvbuf.resize(messages::DATAMSG_MAXLEN);
-
   return {{.session = std::move(session),
            .sockmsg = socket_message{.address = {server_addr}},
            .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
-           .recv_buffer = std::move(recvbuf),
            .receiver = std::forward<Receiver>(receiver),
            .ctx = ctx}};
 }
