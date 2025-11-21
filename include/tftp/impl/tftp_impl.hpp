@@ -291,14 +291,20 @@ auto put_file_t::state_t<Receiver>::submit_recvmsg() noexcept -> void
         sockmsg.buffers = recv_buffer;
         sender auto recvmsg =
             io::recvmsg(socket, sockmsg, 0) | then([&](auto &&len) noexcept {
-              if (len < static_cast<std::streamsize>(sizeof(std::uint16_t)) ||
-                  sockmsg.flags & MSG_TRUNC)
-              {
-                return this->finalize(
-                    {messages::ILLEGAL_OPERATION, "Invalid server response."});
-              }
+              try_with(
+                  std::move(receiver),
+                  [&] {
+                    if (len < static_cast<std::streamsize>(
+                                  sizeof(std::uint16_t)) ||
+                        sockmsg.flags & MSG_TRUNC)
+                    {
+                      return this->finalize({messages::ILLEGAL_OPERATION,
+                                             "Invalid server response."});
+                    }
 
-              route_message(recv_buffer.data(), len);
+                    route_message(recv_buffer.data(), len);
+                  },
+                  [&]() noexcept { this->cleanup(); });
             }) |
             upon_error([&](int error) noexcept {
               this->finalize(std::error_code(error, std::system_category()));
@@ -489,14 +495,20 @@ auto get_file_t::state_t<Receiver>::submit_recvmsg() noexcept -> void
         sockmsg.buffers = recv_buffer;
         sender auto recvmsg =
             io::recvmsg(socket, sockmsg, 0) | then([&](auto &&len) noexcept {
-              if (len < static_cast<std::streamsize>(sizeof(std::uint16_t)) ||
-                  sockmsg.flags & MSG_TRUNC)
-              {
-                return this->finalize(
-                    {messages::ILLEGAL_OPERATION, "Invalid server response."});
-              }
+              try_with(
+                  std::move(receiver),
+                  [&] {
+                    if (len < static_cast<std::streamsize>(
+                                  sizeof(std::uint16_t)) ||
+                        sockmsg.flags & MSG_TRUNC)
+                    {
+                      return this->finalize({messages::ILLEGAL_OPERATION,
+                                             "Invalid server response."});
+                    }
 
-              route_message(recv_buffer.data(), len);
+                    route_message(recv_buffer.data(), len);
+                  },
+                  [&]() noexcept { this->cleanup(); });
             }) |
             upon_error([&](int error) noexcept {
               this->finalize(std::error_code(error, std::system_category()));
