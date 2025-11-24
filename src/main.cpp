@@ -43,17 +43,13 @@ auto main(int argc, char *argv[]) -> int
           return client.put(addr, "./tmp", "/tmp/test1", messages::OCTET);
         });
 
-    auto [status] =
-        sync_wait(std::move(put_file) | upon_error([](const auto &) {
-                    return client::client_sender::status_t{0, "Timed out"};
-                  }))
-            .value();
+    auto [status] = sync_wait(std::move(put_file)).value();
 
     auto &[error, message] = status;
     if (error || !message.empty())
     {
       spdlog::error("{} {}", error, message);
-      return 0;
+      exit(0);
     }
   }
 
@@ -63,17 +59,13 @@ auto main(int argc, char *argv[]) -> int
           return client.get(addr, "/tmp/test1", "./test", messages::OCTET);
         });
 
-    auto [status] =
-        sync_wait(std::move(get_file) | upon_error([](const auto &) {
-                    return client::client_sender::status_t{0, "Timed out"};
-                  }))
-            .value();
+    auto [status] = sync_wait(std::move(get_file)).value();
 
     auto &[error, message] = status;
     if (error || !message.empty())
     {
       spdlog::error("{} {}", error, message);
-      return 0;
+      exit(0);
     }
   }
 

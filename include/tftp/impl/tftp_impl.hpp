@@ -103,6 +103,9 @@ auto client_sender::client_state<Receiver>::error_handler(
 template <typename Receiver>
 auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
 {
+  using socket_type = io::socket::native_socket_type;
+  using io::socket::close;
+
   auto &timer = session.state.timer;
   timer = ctx->timers.remove(timer);
 
@@ -113,7 +116,9 @@ auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
     std::filesystem::remove(tmpfile, err);
   }
 
-  io::shutdown(socket, SHUT_RD);
+  close(static_cast<socket_type>(socket));
+
+  finalized = true;
 }
 
 template <typename Receiver>
@@ -121,9 +126,12 @@ auto client_sender::client_state<Receiver>::finalize(status_t status) noexcept
     -> void
 {
   using namespace stdexec;
-  cleanup();
+  if (!finalized)
+  {
+    cleanup();
 
-  set_value(std::move(receiver), std::move(status));
+    set_value(std::move(receiver), std::move(status));
+  }
 }
 
 template <typename Receiver>
@@ -131,9 +139,12 @@ auto client_sender::client_state<Receiver>::finalize(
     std::error_code error) noexcept -> void
 {
   using namespace stdexec;
-  cleanup();
+  if (!finalized)
+  {
+    cleanup();
 
-  set_error(std::move(receiver), std::move(error));
+    set_error(std::move(receiver), std::move(error));
+  }
 }
 
 template <typename Receiver>
@@ -486,7 +497,8 @@ auto get_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
                                        .buffers = state.buffer},
                         0) |
             then([](auto) noexcept {}) | upon_error([&](int error) noexcept {
-              this->finalize(std::error_code(error, std::system_category()));
+              if (error != 0 && error != EAGAIN)
+                this->finalize(std::error_code(error, std::system_category()));
             });
 
         ctx->scope.spawn(std::move(sendmsg));

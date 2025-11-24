@@ -104,6 +104,8 @@ struct client_sender {
     Receiver receiver;
     /** @brief The asynchronous context. */
     async_context *ctx = nullptr;
+    /** @brief completion state prevents duplicate calls to finalize. */
+    bool finalized = false;
 
     /**
      * @brief handle error messages
