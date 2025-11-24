@@ -112,6 +112,8 @@ auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
     auto err = std::error_code();
     std::filesystem::remove(tmpfile, err);
   }
+
+  io::shutdown(socket, SHUT_RD);
 }
 
 template <typename Receiver>
@@ -208,6 +210,27 @@ auto put_file_t::state_t<Receiver>::send_wrq() noexcept -> void
         buffer.insert(buffer.end(), begin, end);
 
         submit_sendmsg();
+
+        const auto &[_, avg_rtt] =
+            session_t::update_statistics(state.statistics);
+        auto &timer = state.timer = this->ctx->timers.remove(state.timer);
+
+        // timers.add notifies the ctx event-loop by calling ctx.interrupt().
+        timer = this->ctx->timers.add(
+            2 * avg_rtt,
+            [&, retries = 0](auto) mutable noexcept {
+              try_with(
+                  std::move(receiver),
+                  [&] {
+                    constexpr auto MAX_RETRIES = 5;
+                    if (retries++ >= MAX_RETRIES)
+                      return this->finalize({0, "Timed out"});
+
+                    this->submit_sendmsg();
+                  },
+                  [&]() noexcept { this->cleanup(); });
+            },
+            2 * avg_rtt);
       },
       [&]() noexcept { this->cleanup(); });
 }
@@ -229,6 +252,27 @@ auto put_file_t::state_t<Receiver>::ack_handler(messages::ack ack) noexcept
 
         submit_recvmsg();
         submit_sendmsg();
+
+        const auto &[_, avg_rtt] =
+            session_t::update_statistics(session.state.statistics);
+        auto &timer = session.state.timer =
+            this->ctx->timers.remove(session.state.timer);
+
+        timer = this->ctx->timers.add(
+            2 * avg_rtt,
+            [&, retries = 0](auto) mutable noexcept {
+              try_with(
+                  std::move(receiver),
+                  [&] {
+                    constexpr auto MAX_RETRIES = 5;
+                    if (retries++ >= MAX_RETRIES)
+                      return this->finalize({0, "Timed out"});
+
+                    this->submit_sendmsg();
+                  },
+                  [&]() noexcept { this->cleanup(); });
+            },
+            2 * avg_rtt);
       },
       [&]() noexcept { this->cleanup(); });
 }
@@ -244,9 +288,6 @@ auto put_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
   auto &sockmsg = this->sockmsg;
   auto &socket = this->socket;
 
-  const auto &[_, avg_rtt] = session_t::update_statistics(state.statistics);
-  auto &timer = state.timer = ctx->timers.remove(state.timer);
-
   try_with(
       std::move(receiver),
       [&] {
@@ -260,23 +301,6 @@ auto put_file_t::state_t<Receiver>::submit_sendmsg() noexcept -> void
             });
 
         ctx->scope.spawn(std::move(sendmsg));
-
-        // timers.add notifies the ctx event-loop by calling ctx.interrupt().
-        timer = ctx->timers.add(
-            2 * avg_rtt,
-            [&, retries = 0](auto) mutable noexcept {
-              constexpr auto MAX_RETRIES = 5;
-              try_with(
-                  std::move(receiver),
-                  [&] {
-                    if (retries++ >= MAX_RETRIES)
-                      return this->finalize({0, "Timed out"});
-
-                    submit_sendmsg();
-                  },
-                  [&]() noexcept { this->cleanup(); });
-            },
-            2 * avg_rtt);
       },
       [&]() noexcept { this->cleanup(); });
 }
