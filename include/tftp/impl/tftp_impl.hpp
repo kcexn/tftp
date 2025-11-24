@@ -103,9 +103,6 @@ auto client_sender::client_state<Receiver>::error_handler(
 template <typename Receiver>
 auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
 {
-  using socket_type = io::socket::native_socket_type;
-  using io::socket::close;
-
   auto &timer = session.state.timer;
   timer = ctx->timers.remove(timer);
 
@@ -116,7 +113,7 @@ auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
     std::filesystem::remove(tmpfile, err);
   }
 
-  close(static_cast<socket_type>(socket));
+  io::shutdown(socket, SHUT_RD);
 
   finalized = true;
 }
