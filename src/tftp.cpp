@@ -172,12 +172,16 @@ auto handle_request(messages::request req, session_t *siter) -> std::uint16_t
         std::format("{:%Y%m%d_%H%M%S}", std::chrono::system_clock::now());
   }
 
-  auto openmode = (req.opc == WRQ)
-                      ? std::ios::out | std::ios::binary | std::ios::trunc
-                      : std::ios::in | std::ios::binary;
-
   auto err = std::error_code();
-  state.file = filesystem::tmpfile_from(state.target, openmode, state.tmp, err);
+  if (req.opc == WRQ)
+  {
+    state.file = filesystem::open_write(state.target, state.tmp, err);
+  }
+  else
+  {
+    state.file = filesystem::open_read(state.target, err);
+  }
+
   if (!state.file)
   {
     if (err == std::errc::no_such_file_or_directory)
@@ -210,9 +214,8 @@ auto handle_ack(messages::ack ack, session_t *siter) -> std::uint16_t
   auto &session = *siter;
   auto &state = session.state;
 
-  if (state.block_num == 0 ||
-      (state.buffer.size() >= messages::DATAMSG_MAXLEN &&
-       ntohs(ack.block_num) == state.block_num))
+  if ((!state.file->eof() || state.buffer.size() >= messages::DATAMSG_MAXLEN) &&
+      ntohs(ack.block_num) == state.block_num)
   {
     return send_next(siter);
   }

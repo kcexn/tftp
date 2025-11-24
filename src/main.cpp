@@ -39,9 +39,8 @@ auto main(int argc, char *argv[]) -> int
 
   {
     sender auto put_file =
-        client.connect("localhost", "6969") | let_value([&](auto &&addr) {
-          return client.put(std::forward<decltype(addr)>(addr), "./tmp",
-                            "/tmp/test", messages::OCTET);
+        client.connect("localhost", "6969") | let_value([&](auto addr) {
+          return client.put(addr, "./tmp", "/tmp/test1", messages::OCTET);
         });
     auto [status] = sync_wait(std::move(put_file)).value();
 
@@ -55,9 +54,8 @@ auto main(int argc, char *argv[]) -> int
 
   {
     sender auto get_file =
-        client.connect("localhost", "6969") | let_value([&](auto &&addr) {
-          return client.get(std::forward<decltype(addr)>(addr), "/tmp/test",
-                            "./test", messages::OCTET);
+        client.connect("localhost", "6969") | let_value([&](auto addr) {
+          return client.get(addr, "/tmp/test1", "./test", messages::OCTET);
         });
     auto [status] = sync_wait(std::move(get_file)).value();
     auto &[error, message] = status;

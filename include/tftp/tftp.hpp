@@ -96,6 +96,8 @@ struct client_sender {
     session_t session;
     /** @brief The socket message type. */
     socket_message sockmsg;
+    /** @brief The local file path. */
+    std::filesystem::path local;
     /** @brief The client socket. */
     socket_dialog socket;
     /** @brief The operation receiver. */

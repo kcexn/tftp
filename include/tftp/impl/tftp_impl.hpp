@@ -18,6 +18,7 @@
  * @brief This file defines TFTP application logic.
  */
 #pragma once
+#include <filesystem>
 #ifndef TFTP_IMPL_HPP
 #define TFTP_IMPL_HPP
 #include "tftp/detail/dns.hpp"
@@ -104,6 +105,13 @@ auto client_sender::client_state<Receiver>::cleanup() noexcept -> void
 {
   auto &timer = session.state.timer;
   timer = ctx->timers.remove(timer);
+
+  auto &tmpfile = session.state.tmp;
+  if (!tmpfile.empty())
+  {
+    auto err = std::error_code();
+    std::filesystem::remove(tmpfile, err);
+  }
 }
 
 template <typename Receiver>
@@ -342,6 +350,7 @@ auto put_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
 
   return {{.session = std::move(session),
            .sockmsg = socket_message{.address = {server_addr}},
+           .local = std::move(local),
            .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
            .receiver = std::forward<Receiver>(receiver),
            .ctx = ctx}};
@@ -415,7 +424,14 @@ auto get_file_t::state_t<Receiver>::data_handler(
         }
 
         if (!session.state.file->is_open())
+        {
+          auto err = std::error_code();
+          std::filesystem::rename(session.state.tmp, this->local, err);
+          if (err)
+            return this->finalize(err);
+
           return this->finalize();
+        }
 
         submit_recvmsg();
       },
@@ -533,14 +549,18 @@ auto get_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
   if (mode == messages::MAIL)
     throw std::invalid_argument("Mail mode is not allowed in read requests.");
 
-  auto session = session_t{
-      .state = {.target = std::move(remote),
-                .file = std::make_shared<std::fstream>(
-                    local, std::ios::out | std::ios::trunc | std::ios::binary),
-                .mode = mode}};
+  auto tmpfile = std::filesystem::temp_directory_path() / local.filename();
+  auto file = std::make_shared<std::fstream>(
+      tmpfile, std::ios::out | std::ios::trunc | std::ios::binary);
+
+  auto session = session_t{.state = {.target = std::move(remote),
+                                     .tmp = std::move(tmpfile),
+                                     .file = std::move(file),
+                                     .mode = mode}};
 
   return {{.session = std::move(session),
            .sockmsg = socket_message{.address = {server_addr}},
+           .local = std::move(local),
            .socket = ctx->poller.emplace(AF_INET, SOCK_DGRAM, IPPROTO_UDP),
            .receiver = std::forward<Receiver>(receiver),
            .ctx = ctx}};
