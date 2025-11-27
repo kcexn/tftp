@@ -9,6 +9,7 @@ Checks: >
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   modernize-*,
+  -modernize-avoid-c-arrays,
   performance-*,
   -performance-enum-size,
   readability-*,

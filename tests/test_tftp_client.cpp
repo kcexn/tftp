@@ -1,17 +1,17 @@
 /* Copyright (C) 2025 Kevin Exton (kevin.exton@pm.me)
  *
- * tftpd is free software: you can redistribute it and/or modify
+ * tftp is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * tftpd is distributed in the hope that it will be useful,
+ * tftp is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with tftpd.  If not, see <https://www.gnu.org/licenses/>.
+ * along with tftp.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 // NOLINTBEGIN
@@ -126,5 +126,144 @@ TEST(ConnectTest, Connects)
   auto *ptr = reinterpret_cast<sockaddr_in *>(std::ranges::data(addr));
   EXPECT_EQ(ptr->sin_port, htons(69));
   EXPECT_EQ(ptr->sin_addr.s_addr, htonl(INADDR_LOOPBACK));
+}
+
+TEST(TftpClientTest, PutFile)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+  std::string local = "/tmp/local.txt";
+  std::string remote = "/tmp/remote.txt";
+
+  auto put_sender = client.put(server_addr, local, remote, messages::OCTET);
+
+  EXPECT_EQ(put_sender.local, local);
+  EXPECT_EQ(put_sender.remote, remote);
+  EXPECT_EQ(put_sender.mode, messages::OCTET);
+  EXPECT_EQ(put_sender.ctx, client.ctx);
+}
+
+TEST(TftpClientTest, PutFileDefaultMode)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+  std::string local = "local.txt";
+  std::string remote = "remote.txt";
+
+  auto put_sender = client.put(server_addr, local, remote);
+
+  EXPECT_EQ(put_sender.local, local);
+  EXPECT_EQ(put_sender.remote, remote);
+  EXPECT_EQ(put_sender.mode, messages::NETASCII);
+  EXPECT_EQ(put_sender.ctx, client.ctx);
+}
+
+TEST(TftpClientTest, GetFile)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+  std::string local = "/tmp/local.txt";
+  std::string remote = "/tmp/remote.txt";
+
+  auto get_sender = client.get(server_addr, remote, local, messages::OCTET);
+
+  EXPECT_EQ(get_sender.local, local);
+  EXPECT_EQ(get_sender.remote, remote);
+  EXPECT_EQ(get_sender.mode, messages::OCTET);
+  EXPECT_EQ(get_sender.ctx, client.ctx);
+}
+
+TEST(TftpClientTest, GetFileDefaultMode)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+  std::string local = "local.txt";
+  std::string remote = "remote.txt";
+
+  auto get_sender = client.get(server_addr, remote, local);
+
+  EXPECT_EQ(get_sender.local, local);
+  EXPECT_EQ(get_sender.remote, remote);
+  EXPECT_EQ(get_sender.mode, messages::NETASCII);
+  EXPECT_EQ(get_sender.ctx, client.ctx);
+}
+
+TEST(TftpClientTest, GetFileMailMode)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+
+  auto get_sender =
+      client.get(server_addr, "remote.txt", "local.txt", messages::MAIL);
+
+  EXPECT_EQ(get_sender.mode, messages::MAIL);
+}
+
+TEST(TftpClientTest, MultipleClients)
+{
+  auto manager = client_manager();
+  auto client1 = manager.make_client();
+  auto client2 = manager.make_client();
+
+  EXPECT_NE(client1.ctx, nullptr);
+  EXPECT_NE(client2.ctx, nullptr);
+  EXPECT_EQ(client1.ctx, client2.ctx);
+}
+
+TEST(TftpClientTest, PutFileParameterOrder)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+
+  auto put_sender =
+      client.put(server_addr, "source.txt", "destination.txt", messages::OCTET);
+
+  EXPECT_EQ(put_sender.local, "source.txt");
+  EXPECT_EQ(put_sender.remote, "destination.txt");
+}
+
+TEST(TftpClientTest, GetFileParameterOrder)
+{
+  auto manager = client_manager();
+  auto client = manager.make_client();
+
+  io::socket::socket_address<sockaddr_in6> server_addr;
+
+  auto get_sender =
+      client.get(server_addr, "source.txt", "destination.txt", messages::OCTET);
+
+  EXPECT_EQ(get_sender.remote, "source.txt");
+  EXPECT_EQ(get_sender.local, "destination.txt");
+}
+
+TEST(TftpClientTest, ConnectDefaultPort)
+{
+  std::string hostname = "example.com";
+  auto connect_sender = client_manager::client_t::connect(hostname);
+
+  EXPECT_EQ(connect_sender.hostname, hostname);
+  EXPECT_EQ(connect_sender.port, "69");
+}
+
+TEST(TftpClientTest, ConnectCustomPort)
+{
+  std::string hostname = "example.com";
+  std::string port = "6969";
+  auto connect_sender = client_manager::client_t::connect(hostname, port);
+
+  EXPECT_EQ(connect_sender.hostname, hostname);
+  EXPECT_EQ(connect_sender.port, port);
 }
 // NOLINTEND

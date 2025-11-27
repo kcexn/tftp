@@ -1,17 +1,17 @@
 /* Copyright (C) 2025 Kevin Exton (kevin.exton@pm.me)
  *
- * tftpd is free software: you can redistribute it and/or modify
+ * tftp is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * tftpd is distributed in the hope that it will be useful,
+ * tftp is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with tftpd.  If not, see <https://www.gnu.org/licenses/>.
+ * along with tftp.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 // NOLINTBEGIN
@@ -147,6 +147,25 @@ TEST_F(TestTftp, HandleRequest_RrqWithNonexistentFile)
   EXPECT_EQ(result, FILE_NOT_FOUND);
 }
 
+TEST_F(TestTftp, HandleRequest_RrqWithPermissionDenied)
+{
+  // Create a file with no read permissions to trigger ACCESS_VIOLATION
+  const auto test_file = create_test_file("test content");
+  std::filesystem::permissions(test_file, std::filesystem::perms::none);
+
+  auto siter = create_session();
+  request req{.opc = RRQ, .mode = OCTET, .filename = test_file.c_str()};
+
+  const auto result = handle_request(req, std::addressof(siter->second));
+
+  // Line 195 in tftp.cpp: Returns ACCESS_VIOLATION for permission errors
+  EXPECT_EQ(result, ACCESS_VIOLATION);
+
+  // Restore permissions and clean up
+  std::filesystem::permissions(test_file, std::filesystem::perms::owner_all);
+  std::filesystem::remove(test_file);
+}
+
 TEST_F(TestTftp, HandleRequest_RrqSuccessWithOctetMode)
 {
   const auto test_file = create_test_file("hello world");
@@ -204,6 +223,28 @@ TEST_F(TestTftp, HandleRequest_WrqSuccessWithOctetMode)
   EXPECT_EQ(siter->second.state.block_num, 0);
 
   std::filesystem::remove(target_file);
+}
+
+TEST_F(TestTftp, HandleRequest_WrqWithPermissionDenied)
+{
+  // Create a subdirectory with no write permissions
+  const auto test_dir = filesystem::tmpname();
+  std::filesystem::create_directories(test_dir);
+  std::filesystem::permissions(test_dir, std::filesystem::perms::owner_read |
+                                              std::filesystem::perms::owner_exec);
+
+  const auto target_file = test_dir / "test.txt";
+  auto siter = create_session();
+  request req{.opc = WRQ, .mode = OCTET, .filename = target_file.c_str()};
+
+  const auto result = handle_request(req, std::addressof(siter->second));
+
+  // Line 195 in tftp.cpp: Returns ACCESS_VIOLATION for permission errors
+  EXPECT_EQ(result, ACCESS_VIOLATION);
+
+  // Restore permissions and clean up
+  std::filesystem::permissions(test_dir, std::filesystem::perms::owner_all);
+  std::filesystem::remove_all(test_dir);
 }
 
 TEST_F(TestTftp, HandleRequest_WrqWithMailMode)

@@ -1,17 +1,17 @@
 /* Copyright (C) 2025 Kevin Exton (kevin.exton@pm.me)
  *
- * tftpd is free software: you can redistribute it and/or modify
+ * tftp is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * tftpd is distributed in the hope that it will be useful,
+ * tftp is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with tftpd.  If not, see <https://www.gnu.org/licenses/>.
+ * along with tftp.  If not, see <https://www.gnu.org/licenses/>.
  */
 /**
  * @file tftp_protocol.hpp
@@ -45,7 +45,7 @@ struct messages {
    */
   enum mode_t : std::uint8_t { NETASCII = 1, OCTET, MAIL };
   /** @brief converts a mode enum to an integer. */
-  static constexpr auto mode_to_str(std::uint8_t mode) -> const char *;
+  static constexpr auto mode_to_str(messages::mode_t mode) -> const char *;
 
   /**
    * @brief Protocol defined error codes.

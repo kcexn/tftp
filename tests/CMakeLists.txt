@@ -2,12 +2,16 @@ include(GoogleTest)
 
 set(TEST_NAMES
   test_argument_parser
+  test_client_senders
   test_dns
   test_endian
   test_filesystem
   test_generator
   test_tftp
+  test_tftp_impl
   test_tftp_protocol
+  test_tftp_session
+  test_tftp_static
   test_tftp_client
 )
 

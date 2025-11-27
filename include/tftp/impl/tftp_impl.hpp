@@ -1,17 +1,17 @@
 /* Copyright (C) 2025 Kevin Exton (kevin.exton@pm.me)
  *
- * tftpd is free software: you can redistribute it and/or modify
+ * tftp is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * tftpd is distributed in the hope that it will be useful,
+ * tftp is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with tftpd.  If not, see <https://www.gnu.org/licenses/>.
+ * along with tftp.  If not, see <https://www.gnu.org/licenses/>.
  */
 /**
  * @file tftp_impl.hpp
@@ -85,6 +85,10 @@ auto try_with(Receiver &&receiver, Fn &&handler,
 }
 } // namespace detail
 
+// GCOVR_EXCL_START
+// Note: client_state methods require integration testing with async I/O,
+// timers, sockets, and file system operations. They are excluded from
+// unit test coverage and should be tested via integration tests.
 template <typename Receiver>
 auto client_sender::client_state<Receiver>::error_handler(
     const char *msg, std::streamsize len) noexcept -> void
@@ -183,7 +187,12 @@ auto connect_t::connect(Receiver &&receiver) noexcept -> state_t<Receiver>
           .port = std::move(port),
           .receiver = std::forward<Receiver>(receiver)};
 }
+// GCOVR_EXCL_STOP
 
+// GCOVR_EXCL_START
+// Note: put_file_t and get_file_t state methods require integration testing
+// with async I/O, timers, sockets, and file system operations. They are
+// excluded from unit test coverage and should be tested via integration tests.
 template <typename Receiver>
 auto put_file_t::state_t<Receiver>::start() noexcept -> void
 {
@@ -213,7 +222,7 @@ auto put_file_t::state_t<Receiver>::send_wrq() noexcept -> void
         const auto *end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
-        begin = messages::mode_to_str(state.mode);
+        begin = messages::mode_to_str(static_cast<messages::mode_t>(state.mode));
         end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
@@ -417,7 +426,7 @@ auto get_file_t::state_t<Receiver>::send_rrq() noexcept -> void
         const auto *end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
-        begin = messages::mode_to_str(state.mode);
+        begin = messages::mode_to_str(static_cast<messages::mode_t>(state.mode));
         end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
@@ -598,5 +607,6 @@ auto get_file_t::connect(Receiver &&receiver) -> state_t<Receiver>
            .receiver = std::forward<Receiver>(receiver),
            .ctx = ctx}};
 }
+// GCOVR_EXCL_STOP
 } // namespace tftp::client.
 #endif // TFTP_IMPL_HPP

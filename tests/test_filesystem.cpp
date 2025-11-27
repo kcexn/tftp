@@ -1,17 +1,17 @@
 /* Copyright (C) 2025 Kevin Exton (kevin.exton@pm.me)
  *
- * tftpd is free software: you can redistribute it and/or modify
+ * tftp is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * tftpd is distributed in the hope that it will be useful,
+ * tftp is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with tftpd.  If not, see <https://www.gnu.org/licenses/>.
+ * along with tftp.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 // NOLINTBEGIN
@@ -144,6 +144,28 @@ TEST_F(TestFileSystem, OpenReadReturnsErrorOnNonExistentFile)
 
   EXPECT_FALSE(fstream);
   EXPECT_TRUE(err);
+  EXPECT_EQ(err, std::errc::no_such_file_or_directory);
+}
+
+TEST_F(TestFileSystem, OpenReadReturnsErrorOnPermissionDenied)
+{
+  const auto path = tmpname();
+  // Create a file
+  std::ofstream(path) << "test data";
+
+  // Remove all permissions to make it unreadable
+  std::filesystem::permissions(path, std::filesystem::perms::none);
+
+  std::error_code err;
+  auto fstream = open_read(path, err);
+
+  EXPECT_FALSE(fstream);
+  EXPECT_TRUE(err);
+  EXPECT_EQ(err, std::errc::permission_denied);
+
+  // Restore permissions and clean up
+  std::filesystem::permissions(path, std::filesystem::perms::owner_all);
+  std::filesystem::remove(path);
 }
 
 TEST_F(TestFileSystem, OpenWriteOpensTempFileForWriting)
