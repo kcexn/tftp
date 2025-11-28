@@ -146,7 +146,8 @@ TEST(GetErrorMessageTest, MessageWithSpecialCharacters)
   error->error = htons(messages::ACCESS_VIOLATION);
 
   const char *msg_start = buffer.data() + sizeof(messages::error);
-  std::strcpy(const_cast<char *>(msg_start), "Permission denied: /root/file.txt");
+  std::strcpy(const_cast<char *>(msg_start),
+              "Permission denied: /root/file.txt");
 
   auto message = get_error_message(error, buffer.size());
 
@@ -233,7 +234,8 @@ TEST(TryWithTest, BadAllocException)
 
   EXPECT_TRUE(cleanup_called);
   EXPECT_TRUE(receiver.error_called);
-  EXPECT_EQ(receiver.error_code, std::make_error_code(std::errc::not_enough_memory));
+  EXPECT_EQ(receiver.error_code,
+            std::make_error_code(std::errc::not_enough_memory));
 }
 
 TEST(TryWithTest, GenericException)

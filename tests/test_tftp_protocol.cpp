@@ -91,7 +91,8 @@ TEST(ErrorsMsgTest, BasicErrorMessage)
   auto buf = errors::msg(messages::FILE_NOT_FOUND, "File not found.");
 
   // Check buffer size
-  EXPECT_EQ(buf.size(), sizeof(messages::error) + 16);  // "File not found." + null
+  EXPECT_EQ(buf.size(),
+            sizeof(messages::error) + 16); // "File not found." + null
 
   // Check opcode (network byte order)
   const auto *err = reinterpret_cast<const messages::error *>(buf.data());
@@ -115,7 +116,8 @@ TEST(ErrorsMsgTest, EmptyMessage)
 
 TEST(ErrorsMsgTest, LongMessage)
 {
-  const char long_msg[] = "This is a very long error message that contains many characters to test buffer handling.";
+  const char long_msg[] = "This is a very long error message that contains "
+                          "many characters to test buffer handling.";
   auto buf = errors::msg(messages::ACCESS_VIOLATION, long_msg);
 
   EXPECT_EQ(buf.size(), sizeof(messages::error) + sizeof(long_msg));
@@ -132,14 +134,10 @@ TEST(ErrorsMsgTest, AllErrorCodes)
 {
   // Test that msg() works with all defined error codes
   std::vector<std::uint16_t> error_codes = {
-      messages::NOT_DEFINED,
-      messages::FILE_NOT_FOUND,
-      messages::ACCESS_VIOLATION,
-      messages::DISK_FULL,
-      messages::ILLEGAL_OPERATION,
-      messages::UNKNOWN_TID,
-      messages::FILE_ALREADY_EXISTS,
-      messages::NO_SUCH_USER,
+      messages::NOT_DEFINED,         messages::FILE_NOT_FOUND,
+      messages::ACCESS_VIOLATION,    messages::DISK_FULL,
+      messages::ILLEGAL_OPERATION,   messages::UNKNOWN_TID,
+      messages::FILE_ALREADY_EXISTS, messages::NO_SUCH_USER,
   };
 
   for (auto code : error_codes)
@@ -168,7 +166,7 @@ TEST(ErrorsMsgTest, NullTerminatorIncluded)
   auto buf = errors::msg(messages::FILE_NOT_FOUND, "Test");
 
   // Verify null terminator is included
-  EXPECT_EQ(buf.size(), sizeof(messages::error) + 5);  // "Test\0"
+  EXPECT_EQ(buf.size(), sizeof(messages::error) + 5); // "Test\0"
   EXPECT_EQ(buf[buf.size() - 1], '\0');
 }
 
@@ -282,7 +280,7 @@ TEST(ErrorPacketConsistencyTest, MultipleCalls)
   auto &buf1 = errors::file_not_found();
   auto &buf2 = errors::file_not_found();
 
-  EXPECT_EQ(&buf1, &buf2);  // Should return same static buffer
+  EXPECT_EQ(&buf1, &buf2); // Should return same static buffer
 }
 
 TEST(ErrorPacketConsistencyTest, AllPacketsAreStatic)
@@ -349,7 +347,8 @@ TEST(ConstexprTest, ModeToStrIsConstexpr)
   static_assert(messages::mode_to_str(messages::NETASCII)[0] == 'n');
   static_assert(messages::mode_to_str(messages::OCTET)[0] == 'o');
   static_assert(messages::mode_to_str(messages::MAIL)[0] == 'm');
-  static_assert(messages::mode_to_str(static_cast<messages::mode_t>(99))[0] == '\0');
+  static_assert(messages::mode_to_str(static_cast<messages::mode_t>(99))[0] ==
+                '\0');
 }
 
 TEST(ConstexprTest, ErrorsMsgIsConstexpr)

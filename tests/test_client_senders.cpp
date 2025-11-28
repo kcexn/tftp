@@ -277,14 +277,12 @@ TEST(SenderTypeTraitTest, ConnectHasSenderConcept)
 
 TEST(SenderTypeTraitTest, PutFileHasSenderConcept)
 {
-  EXPECT_TRUE(
-      (std::is_same_v<put_file_t::sender_concept, stdexec::sender_t>));
+  EXPECT_TRUE((std::is_same_v<put_file_t::sender_concept, stdexec::sender_t>));
 }
 
 TEST(SenderTypeTraitTest, GetFileHasSenderConcept)
 {
-  EXPECT_TRUE(
-      (std::is_same_v<get_file_t::sender_concept, stdexec::sender_t>));
+  EXPECT_TRUE((std::is_same_v<get_file_t::sender_concept, stdexec::sender_t>));
 }
 
 TEST(SenderTypeTraitTest, PutFileInheritsClientSender)

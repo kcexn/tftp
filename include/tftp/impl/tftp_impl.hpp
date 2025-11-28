@@ -222,7 +222,8 @@ auto put_file_t::state_t<Receiver>::send_wrq() noexcept -> void
         const auto *end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
-        begin = messages::mode_to_str(static_cast<messages::mode_t>(state.mode));
+        begin =
+            messages::mode_to_str(static_cast<messages::mode_t>(state.mode));
         end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
@@ -426,7 +427,8 @@ auto get_file_t::state_t<Receiver>::send_rrq() noexcept -> void
         const auto *end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 
-        begin = messages::mode_to_str(static_cast<messages::mode_t>(state.mode));
+        begin =
+            messages::mode_to_str(static_cast<messages::mode_t>(state.mode));
         end = begin + std::strlen(begin) + 1;
         buffer.insert(buffer.end(), begin, end);
 

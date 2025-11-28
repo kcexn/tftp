@@ -77,9 +77,8 @@ TEST_F(TestTftpStatic, InsertData_OctetModeCopiesDirectly)
 
   // In OCTET mode, data should be copied as-is
   EXPECT_EQ(buffer.size(), sizeof(messages::data) + test_data.size());
-  EXPECT_EQ(
-      std::string(buffer.begin() + sizeof(messages::data), buffer.end()),
-      test_data);
+  EXPECT_EQ(std::string(buffer.begin() + sizeof(messages::data), buffer.end()),
+            test_data);
 }
 
 TEST_F(TestTftpStatic, InsertData_NetasciiSkipsBareNullBytes)
@@ -299,15 +298,15 @@ TEST_F(TestTftpStatic, SendNext_ReadsFileData)
   EXPECT_GT(session.state.buffer.size(), sizeof(messages::data));
 
   // Verify data packet structure
-  const auto *msg = reinterpret_cast<const messages::data *>(
-      session.state.buffer.data());
+  const auto *msg =
+      reinterpret_cast<const messages::data *>(session.state.buffer.data());
   EXPECT_EQ(ntohs(msg->opc), DATA);
   EXPECT_EQ(ntohs(msg->block_num), 1);
 
   // Verify content
-  const auto data_content = std::string(
-      session.state.buffer.begin() + sizeof(messages::data),
-      session.state.buffer.end());
+  const auto data_content =
+      std::string(session.state.buffer.begin() + sizeof(messages::data),
+                  session.state.buffer.end());
   EXPECT_EQ(data_content, content);
 }
 
@@ -328,9 +327,9 @@ TEST_F(TestTftpStatic, SendNext_HandlesNetasciiConversion)
   EXPECT_EQ(result, 0);
 
   // Verify NETASCII conversion occurred (\n -> \r\n)
-  const auto data_content = std::string(
-      session.state.buffer.begin() + sizeof(messages::data),
-      session.state.buffer.end());
+  const auto data_content =
+      std::string(session.state.buffer.begin() + sizeof(messages::data),
+                  session.state.buffer.end());
   EXPECT_EQ(data_content, "Line1\r\nLine2\r\n");
 }
 
@@ -368,7 +367,7 @@ TEST_F(TestTftpStatic, SendNext_OverflowHandlingWithNetascii)
   std::string content;
   for (int i = 0; i < 300; i++)
   {
-    content += "Line\n";  // 5 bytes becomes 6 bytes in NETASCII
+    content += "Line\n"; // 5 bytes becomes 6 bytes in NETASCII
   }
   const auto test_file = create_test_file(content);
 
@@ -428,8 +427,8 @@ TEST_F(TestTftpStatic, SendNext_SetsCorrectOpcodeAndBlockNum)
 
   EXPECT_EQ(result, 0);
 
-  const auto *msg = reinterpret_cast<const messages::data *>(
-      session.state.buffer.data());
+  const auto *msg =
+      reinterpret_cast<const messages::data *>(session.state.buffer.data());
   EXPECT_EQ(ntohs(msg->opc), DATA);
   EXPECT_EQ(ntohs(msg->block_num), 43);
 }

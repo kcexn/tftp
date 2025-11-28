@@ -106,7 +106,7 @@ TEST(SessionStateTest, FieldAssignments)
   session_t::state_t state;
   state.block_num = 42;
   state.opc = 3;  // DATA
-  state.mode = 2;  // OCTET
+  state.mode = 2; // OCTET
 
   EXPECT_EQ(state.block_num, 42);
   EXPECT_EQ(state.opc, 3);
@@ -297,25 +297,23 @@ TEST(TypeAliasTest, ClockType)
 TEST(TypeAliasTest, TimestampType)
 {
   EXPECT_TRUE((std::is_same_v<session_t::timestamp,
-               std::chrono::steady_clock::time_point>));
+                              std::chrono::steady_clock::time_point>));
 }
 
 TEST(TypeAliasTest, DurationType)
 {
-  EXPECT_TRUE((std::is_same_v<session_t::duration,
-               std::chrono::milliseconds>));
+  EXPECT_TRUE((std::is_same_v<session_t::duration, std::chrono::milliseconds>));
 }
 
 TEST(TypeAliasTest, TimerIdType)
 {
-  EXPECT_TRUE((std::is_same_v<session_t::timer_id,
-               net::timers::timer_id>));
+  EXPECT_TRUE((std::is_same_v<session_t::timer_id, net::timers::timer_id>));
 }
 
 TEST(TypeAliasTest, SocketType)
 {
-  EXPECT_TRUE((std::is_same_v<session_t::socket_type,
-               io::socket::native_socket_type>));
+  EXPECT_TRUE(
+      (std::is_same_v<session_t::socket_type, io::socket::native_socket_type>));
 }
 
 // =============================================================================

@@ -230,8 +230,9 @@ TEST_F(TestTftp, HandleRequest_WrqWithPermissionDenied)
   // Create a subdirectory with no write permissions
   const auto test_dir = filesystem::tmpname();
   std::filesystem::create_directories(test_dir);
-  std::filesystem::permissions(test_dir, std::filesystem::perms::owner_read |
-                                              std::filesystem::perms::owner_exec);
+  std::filesystem::permissions(test_dir,
+                               std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_exec);
 
   const auto target_file = test_dir / "test.txt";
   auto siter = create_session();

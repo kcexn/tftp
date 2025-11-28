@@ -46,16 +46,17 @@ struct config {
 
 static auto print_usage(const char *program_name) -> void
 {
-  std::cerr << "Usage: " << program_name << " [OPTIONS] get <remote> <local>\n"
-            << "       " << program_name << " [OPTIONS] put <local> <remote>\n"
-            << "Arguments:\n"
-            << "  get <remote> <local>    Download remote file to local path\n"
-            << "  put <local> <remote>    Upload local file to remote path\n"
-            << "\nOptions:\n"
-            << "  -h, --help              Display this help message\n"
-            << "  -H, --host=<host[:port]> TFTP server hostname:port "
-               "(required, default port: 69)\n"
-            << "  --mode=<netascii|octet|mail> Transfer mode (default: octet)\n";
+  std::cerr
+      << "Usage: " << program_name << " [OPTIONS] get <remote> <local>\n"
+      << "       " << program_name << " [OPTIONS] put <local> <remote>\n"
+      << "Arguments:\n"
+      << "  get <remote> <local>    Download remote file to local path\n"
+      << "  put <local> <remote>    Upload local file to remote path\n"
+      << "\nOptions:\n"
+      << "  -h, --help              Display this help message\n"
+      << "  -H, --host=<host[:port]> TFTP server hostname:port "
+         "(required, default port: 69)\n"
+      << "  --mode=<netascii|octet|mail> Transfer mode (default: octet)\n";
 }
 
 static auto to_lowercase(std::string_view input) -> std::string

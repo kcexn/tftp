@@ -11,7 +11,6 @@ A modern TFTP (Trivial File Transfer Protocol) client. Implements [RFC 1350](htt
 - **Sender/Receivers** implementation using asynchronous senders/receivers pattern.
 - **RFC 1350 compliant** TFTP protocol support
 - **Command-line interface** for file transfers
-- **Library API** for integration into other projects
 
 ## Building
 
@@ -82,47 +81,10 @@ tftp -H hostname[:port] put <local> <remote>
 tftp -H localhost get /tmp/remote.txt ./local.txt
 
 # Upload with custom port
-tftp -H 192.168.1.1:6969 put ./file.txt /tmp/file.txt
+tftp -H localhost:6969 put ./file.txt /tmp/file.txt
 
 # Download using netascii mode
 tftp -H example.com --mode=netascii get /path/to/file.txt download.txt
-```
-
-## Library Usage
-
-The TFTP client can be used as a library in other C++ projects:
-
-```cpp
-#include <tftp/tftp_client.hpp>
-
-using namespace net::service;
-using namespace tftp;
-
-auto manager = client_manager();
-auto client = manager.make_client();
-
-// Download a file
-auto get_result = client.connect("hostname", "69")
-    | stdexec::let_value([&](auto addr) {
-        return client.get(addr, "/remote/path", "./local/path", messages::OCTET);
-    });
-stdexec::sync_wait(std::move(get_result));
-
-// Upload a file
-auto put_result = client.connect("hostname", "69")
-    | stdexec::let_value([&](auto addr) {
-        return client.put(addr, "./local/path", "/remote/path", messages::OCTET);
-    });
-stdexec::sync_wait(std::move(put_result));
-```
-
-## Documentation
-
-Generate API documentation using Doxygen:
-
-```bash
-cmake --build --preset debug --target docs
-# Opens docs/html/index.html
 ```
 
 ## License
