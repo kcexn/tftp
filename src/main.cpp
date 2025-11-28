@@ -222,6 +222,13 @@ static auto parse_arguments(int argc, char *argv[]) -> std::optional<config>
     }
     else if (!opt.value.empty())
     {
+      if (!has_hostname)
+      {
+        std::cerr << "Error: Missing required --host option\n";
+        print_usage(program_name);
+        return std::nullopt;
+      }
+
       if (!handle_positional(opt.value, positional_count, conf, first_arg,
                              second_arg))
       {
@@ -234,14 +241,7 @@ static auto parse_arguments(int argc, char *argv[]) -> std::optional<config>
   if (positional_count < 3)
   {
     std::cerr << "Error: Missing required positional arguments\n";
-    print_usage(argv[0]);
-    return std::nullopt;
-  }
-
-  if (!has_hostname)
-  {
-    std::cerr << "Error: Missing required --host option\n";
-    print_usage(argv[0]);
+    print_usage(program_name);
     return std::nullopt;
   }
 
